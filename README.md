@@ -8,8 +8,9 @@
    - [ ] Role change of a member (removing/adding).
 
 ## VRChat
+- [x] Display any VRChat user's profile.
+- [ ] Link user account to Discord account _(use database)_, to quicky view user's account _(use /vrc to view your account, or admins can @ the user to view their linked vrc account if they have one linked)_.
 - [ ] Capabilities of changing a VRChat member's roles witin' the Server's Group.
-- [ ] Display any VRChat user's profile.
 - [ ] _(optional)_ Remove VRChat member from Server's Group.
 - [ ] Send invite link to in-game Group _(need more info on this)_.
 
