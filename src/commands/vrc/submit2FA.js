@@ -1,14 +1,11 @@
 //imports
 import { SlashCommandBuilder } from 'discord.js'
 import { VRChatApi } from '@kindlyfire/vrchatapi'
-import { getConfig } from '../../configManager.js'
+import { getConfig, updateConfig } from '../../configManager.js'
 
 const config = await getConfig()
-const vrcUsername = process.env.VRC_USERNAME
-const vrcPassword = process.env.VRC_PASSWORD
 const newAuthToken = config.authToken
-const userAgentName = 'VRChatDiscordHelperBot/0.1'
-
+const userAgentName = config.userAgent
 const vrc = new VRChatApi({
     userAgent: userAgentName,
     authToken: newAuthToken
