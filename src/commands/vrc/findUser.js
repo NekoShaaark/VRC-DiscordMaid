@@ -1,43 +1,9 @@
 //imports
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Component, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
-import { VRChatApi } from '@kindlyfire/vrchatapi'
-import { getConfig, updateConfig } from '../../configManager.js'
 import dotenv from 'dotenv'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
+import { getConfig } from '../../configManager.js'
+import { getVRC } from '../../vrchatClient.js'
 dotenv.config()
-
-const config = await getConfig()
-const vrcUsername = process.env.VRC_USERNAME
-const vrcPassword = process.env.VRC_PASSWORD
-const currentAuthToken = config.authToken
-const userAgentName = 'VRChatDiscordHelperBot/0.1'
-
-const vrc = new VRChatApi({
-	userAgent: userAgentName,
-	authToken: currentAuthToken
-})
-
-//TODO: extract this into its own handler file 
-//NOTE: try again later, because it doesn't like being in its own file
-//if logs into user, continue as normal
-const authResult = await vrc.auth.login(vrcUsername, vrcPassword)
-if(!('requiresTwoFactorAuth' in authResult.data)){
-    const vrcUser = await vrc.user.get()
-    console.log("Logged in as:", vrcUser.data.displayName)
-    await updateConfig('new2faCodeNeeded', false)
-}
-//otherwise, create a new authToken, and prompt user to submit new 2FA code
-else{
-    //login and generate new authToken
-    const vrcAgent = new VRChatApi({ userAgent: userAgentName })
-    const authResult = await vrcAgent.auth.login(vrcUsername, vrcPassword)
-    await updateConfig('authToken', authResult.token) //store token in config.json
-
-    //if 2fa is required (should be always true)
-    if('requiresTwoFactorAuth' in authResult.data){ 
-        console.log('New 2fa code required!')
-        await updateConfig('new2faCodeNeeded', true)
-    }
-}
 
 const trustLevelEnum = Object.freeze({
     VISITOR: "",
@@ -108,6 +74,7 @@ export default {
 
     //runs the command
     async execute(interaction) {
+        const config = await getConfig()
         if(config.new2faCodeNeeded){ //if set to true, reboot is required to overcome this
             await interaction.reply('Please contact admin to submit new 2fa Code.')
             return
@@ -116,6 +83,7 @@ export default {
         const targetUser = interaction.options.getString('user')
         await interaction.reply(`Finding ${targetUser}...`)
 
+        const vrc = getVRC()
         const foundUsers = await vrc.users.search(targetUser)
         const foundUserData = {
             displayName: await foundUsers.data[0].displayName,
@@ -127,7 +95,6 @@ export default {
             userId: await foundUsers.data[0].id
         } 
         
-
         const foundUserEmbed = new EmbedBuilder()
             .setColor(foundUserData.status.color)
             .setTitle(`VRChat User: ${foundUserData.displayName}`)

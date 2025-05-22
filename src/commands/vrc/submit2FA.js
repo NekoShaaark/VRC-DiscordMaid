@@ -1,14 +1,12 @@
 //imports
 import { SlashCommandBuilder } from 'discord.js'
 import { VRChatApi } from '@kindlyfire/vrchatapi'
-import { getConfig, updateConfig } from '../../configManager.js'
+import { getConfig } from '../../configManager.js'
 
 const config = await getConfig()
-const newAuthToken = config.authToken
-const userAgentName = config.userAgent
 const vrc = new VRChatApi({
-    userAgent: userAgentName,
-    authToken: newAuthToken
+    userAgent: config.userAgent,
+    authToken: config.authToken
 })
 
 
@@ -27,18 +25,35 @@ export default {
     cooldown: 6,
 
     //runs the command
-    async execute(interaction) {        
+    async execute(interaction) {
         if(!config.new2faCodeNeeded){ 
-            await interaction.reply("A new 2fa Code isn't required now.")
+            await interaction.reply("A new 2FA Code isn't required now.")
             return 
         }
-        
-        //login with authToken and submitted 2fa code
+
+        //make sure inputted code is numerical
         const inputCode = interaction.options.getString('2facode')
-        const result = await vrc.auth.verify2fa(inputCode)
-        if(result.data.verified){
-            console.log("New 2fa code submitted, please reboot")
-            await interaction.reply('New 2fa Code submitted. Please reboot bot to complete reconnect!')
+        if(!/^\d{6}$/.test(inputCode)){
+            await interaction.reply("That doesn't look like a valid 6-digit 2FA code, please try a numerical code.")
+            return
+        }
+        
+        //check if submitted code works, if it does, login as normal
+        //if submitted code doesn't work, handle and return error (hopefully without crashing)
+        try{
+            const result = await vrc.auth.verify2fa(inputCode)
+            if(result.data.verified){
+                console.log("New 2FA code submitted, please reboot.")
+                await interaction.reply('New 2FA code submitted. Please reboot bot to complete reconnect!')
+            }
+            else{ 
+                console.log("2FA code is incorrect, please try again.")
+                await interaction.reply("That 2FA code was invalid. Please double-check it and try again.") 
+            }
+        }
+        catch(error){
+            console.log("Error during 2FA verification:", error)
+            await interaction.reply("Something went wrong while verifying the 2FA code. Make sure it's a valid code, and try again. Check console for more details.")
         }
     }
 }
