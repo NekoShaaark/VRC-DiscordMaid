@@ -26,15 +26,16 @@ export default {
 
     //runs the command
     async execute(interaction) {
+        await interaction.deferReply()
         if(!config.new2faCodeNeeded){ 
-            await interaction.reply("A new 2FA Code isn't required now.")
+            await interaction.editReply("A new 2FA Code isn't required now.")
             return 
         }
 
         //make sure inputted code is numerical
         const inputCode = interaction.options.getString('2facode')
         if(!/^\d{6}$/.test(inputCode)){
-            await interaction.reply("That doesn't look like a valid 6-digit 2FA code, please try a numerical code.")
+            await interaction.editReply("That doesn't look like a valid 6-digit 2FA code, please try a numerical code.")
             return
         }
         
@@ -44,16 +45,16 @@ export default {
             const result = await vrc.auth.verify2fa(inputCode)
             if(result.data.verified){
                 console.log("New 2FA code submitted, please reboot.")
-                await interaction.reply('New 2FA code submitted. Please reboot bot to complete reconnect!')
+                await interaction.editReply('New 2FA code submitted. Please reboot bot to complete reconnect!')
             }
             else{ 
                 console.log("2FA code is incorrect, please try again.")
-                await interaction.reply("That 2FA code was invalid. Please double-check it and try again.") 
+                await interaction.editReply("That 2FA code was invalid. Please double-check it and try again.") 
             }
         }
         catch(error){
             console.log("Error during 2FA verification:", error)
-            await interaction.reply("Something went wrong while verifying the 2FA code. Make sure it's a valid code, and try again. Check console for more details.")
+            await interaction.editReply("Something went wrong while verifying the 2FA code. Make sure it's a valid code, and try again. Check console for more details.")
         }
     }
 }
