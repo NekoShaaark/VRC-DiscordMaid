@@ -1,10 +1,5 @@
 import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core"
 
-const timestamps = {
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  removedAt: timestamp('removed_at')
-}
 
 export const usersTable = pgTable('users', {
   id: serial('id').primaryKey(), //internal id
@@ -15,7 +10,7 @@ export const usersTable = pgTable('users', {
   vrcUserId: text('vrchat_user_id').notNull(), //vrchat id
   vrcDisplayName: text('vrchat_display_name').notNull(),
 
-  ...timestamps
+  createdAt: timestamp('created_at').defaultNow().notNull()
 })
 
 export const userNotesTable = pgTable('user_notes', {

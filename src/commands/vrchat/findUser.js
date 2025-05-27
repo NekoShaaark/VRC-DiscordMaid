@@ -129,16 +129,16 @@ export default {
         let foundUser
         const profileArg = interaction.options.getString('profile')
         const shortOrLong = interaction.options.getBoolean('short')
-        await interaction.editReply(`Finding ${profileArg}...`)
         
         //if "profile" option is given, search for user, otherwise return user from database
         if(profileArg){
+            await interaction.editReply(`Finding ${profileArg}'s VRChat profile...`)
             try{
                 //determine which method to find user, based on targetUser input
                 //discord mention
                 if(profileArg.slice(0,2) == "<@"){ 
                     const mentionedUserId = profileArg.slice(2, -1)
-                    const userInDb = await getUserInDB(mentionedUserId, null, "discord")
+                    const userInDb = await getUserInDB(mentionedUserId, null)
                     if(!userInDb){ 
                         await interaction.editReply("That user has not linked their VRChat account to their Discord account. \n To link your accounts, use the `/vrchat link` command.")
                         return
@@ -149,8 +149,8 @@ export default {
 
                 //vrchat profile link
                 else if(profileArg.slice(0,29) == "https://vrchat.com/home/user/"){
-                    const userId = profileArg.slice(29)
-                    const foundUsers = await vrc.users.get(userId)
+                    const vrcUserId = profileArg.slice(29)
+                    const foundUsers = await vrc.users.get(vrcUserId)
                     if(!foundUsers){
                         await interaction.editReply("Invalid VRChat Profile Link given, please provide a valid Link.")
                         return
@@ -183,7 +183,8 @@ export default {
         }
         //return user from database, if exists
         else{
-            const userInDb = await getUserInDB(interaction.user.id, null, "discord")
+            await interaction.editReply(`Finding your VRChat profile...`)
+            const userInDb = await getUserInDB(interaction.user.id, null)
             if(userInDb){
                 const foundUser = await vrc.users.get(userInDb.vrcUserId)
                 const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data)
