@@ -23,7 +23,7 @@ const booleanActionRow = new ActionRowBuilder()
 
 async function createNewUser(discordUserId, discordUsername, userVRCData){
     //check if user exists, and return if does
-    if(!doesUserExistInDB(discordUserId, null, "discord")){ return null }
+    if(!getUserInDB(discordUserId, null, "discord")){ return null }
     
     //check if userVRCData exists, and pull data from it
     if(!userVRCData){ return null }
@@ -44,14 +44,14 @@ async function createNewUser(discordUserId, discordUsername, userVRCData){
     return newUser[0]
 }
 
-async function doesUserExistInDB(discordUserId, vrcUserId, discordOrVRChat){
+export async function getUserInDB(discordUserId, vrcUserId, discordOrVRChat){
     if(discordOrVRChat == "discord"){
         const currentUser = await db
             .select()
             .from(usersTable)
             .where(eq(usersTable.discordUserId, discordUserId))
             .limit(1)
-        if(currentUser.length > 0){ console.log("returned discord currentUser"); return currentUser[0] }
+        if(currentUser.length > 0){ return currentUser[0] }
     }
     if(discordOrVRChat == "vrchat"){
         const currentUser = await db
@@ -59,7 +59,7 @@ async function doesUserExistInDB(discordUserId, vrcUserId, discordOrVRChat){
             .from(usersTable)
             .where(eq(usersTable.vrcUserId, vrcUserId))
             .limit(1)
-        if(currentUser.length > 0){ console.log("returned vrchat currentUser"); return currentUser[0] }
+        if(currentUser.length > 0){ return currentUser[0] }
     }
     //neither user exists
     return null
@@ -134,11 +134,11 @@ export default {
 
             //if user already exists, don't need to create new user
             //otherwise, if vrchat is already linked to another user, send explanation
-            if(await doesUserExistInDB(userInteraction.id, null, "discord")){ 
+            if(await getUserInDB(userInteraction.id, null, "discord")){ 
                 interaction.editReply("You have already linked your VRChat Profile to this Discord account. \n To see your profile use the `/vrc` command. \n Or to unlink your account use the `/vrchat unlink` command.")
                 return
             }
-            else if(await doesUserExistInDB(null, foundUser.id, "vrchat")){
+            else if(await getUserInDB(null, foundUser.id, "vrchat")){
                 interaction.editReply("This VRChat Profile is already linked to someone's Discord account. \n If this Profile is yours, please contact an admin to fix this.")
                 return
             }

@@ -1,11 +1,14 @@
 //imports
 import dotenv from 'dotenv'
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
 import { getConfig } from '../../configManager.js'
 import { getVRC } from '../../vrchatClient.js'
+import { getUserInDB } from './vrchatSubs.js'
 dotenv.config()
 
 const vrc = getVRC()
+const config = await getConfig()
+
 const trustLevelEnum = Object.freeze({
     VISITOR: "",
     NEW: "system_trust_basic",
@@ -105,7 +108,7 @@ export default {
         .addStringOption(option => 
             option
                 .setName('profile')
-                .setDescription('Discord mention or VRChat profile link.')) //TODO: discord mention
+                .setDescription('Discord mention, VRChat profile link, or VRChat username.'))
         .addBooleanOption(option => 
             option
                 .setName('short')
@@ -114,32 +117,84 @@ export default {
 
     //runs the command
     async execute(interaction) {
-        const config = await getConfig()
-        if(config.new2faCodeNeeded){ //if set to true, reboot is required to overcome this
+        await interaction.deferReply()
+
+        //if a new 2FA code is submitted, reboot is required to overcome this
+        if(config.new2faCodeNeeded){
             await interaction.reply('Please contact admin to submit new 2fa Code.')
             return
         }
 
         //send "loading..." message
-        const targetUser = interaction.options.getString('profile')
+        let foundUser
+        const profileArg = interaction.options.getString('profile')
         const shortOrLong = interaction.options.getBoolean('short')
-        await interaction.reply(`Finding ${targetUser}...`)
+        await interaction.editReply(`Finding ${profileArg}...`)
         
-        //if user is found, create the vrcUser embed
-        try{
-            const foundUsers = await vrc.users.search(targetUser)
-            const createdVRCUserEmbed = await createVRCUserEmbed(foundUsers.data[0], shortOrLong)
+        //if "profile" option is given, search for user, otherwise return user from database
+        if(profileArg){
+            try{
+                //determine which method to find user, based on targetUser input
+                //discord mention
+                if(profileArg.slice(0,2) == "<@"){ 
+                    const mentionedUserId = profileArg.slice(2, -1)
+                    const userInDb = await getUserInDB(mentionedUserId, null, "discord")
+                    if(!userInDb){ 
+                        await interaction.editReply("That user has not linked their VRChat account to their Discord account. \n To link your accounts, use the `/vrchat link` command.")
+                        return
+                    }
+                    const foundUsers = await vrc.users.get(userInDb.vrcUserId)
+                    foundUser = await foundUsers.data
+                }
+
+                //vrchat profile link
+                else if(profileArg.slice(0,29) == "https://vrchat.com/home/user/"){
+                    const userId = profileArg.slice(29)
+                    const foundUsers = await vrc.users.get(userId)
+                    if(!foundUsers){
+                        await interaction.editReply("Invalid VRChat Profile Link given, please provide a valid Link.")
+                        return
+                    }
+                    foundUser = await foundUsers.data
+                }
+
+                //plain text vrchat username/displayName
+                else{
+                    const foundUsers = await vrc.users.search(profileArg)
+                    if(!foundUsers){
+                        await interaction.editReply("No VRChat users found containing that name.")
+                        return
+                    }
+                    foundUser = await foundUsers.data[0]
+                }
             
-            //send embed with profile link button
-            await interaction.editReply({ 
-                content: "", 
-                embeds: [createdVRCUserEmbed.foundUserEmbed], 
-                components: [createdVRCUserEmbed.vrcActionRow] 
-            })
+                //send embed with profile link button
+                const createdVRCUserEmbed = await createVRCUserEmbed(foundUser, shortOrLong)
+                await interaction.editReply({ 
+                    content: "", 
+                    embeds: [createdVRCUserEmbed.foundUserEmbed], 
+                    components: [createdVRCUserEmbed.vrcActionRow] 
+                })
+            }
+            catch(error){
+                console.error("An error occured while trying to find the VRChat User, or while creating the VRChat User Embed.", error)
+                await interaction.editReply("An error occured while trying to find that VRChat User.")
+            }
         }
-        catch(error){
-            console.error("An error occured while trying to find the VRChat User, or while creating the VRChat User Embed.", error)
-            await interaction.editReply({ content: "An error occured while trying to find that VRChat User.", flags: MessageFlags.Ephemeral })
+        //return user from database, if exists
+        else{
+            const userInDb = await getUserInDB(interaction.user.id, null, "discord")
+            if(userInDb){
+                const foundUser = await vrc.users.get(userInDb.vrcUserId)
+                const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data)
+                await interaction.editReply({
+                    content: "",
+                    embeds: [createdVRCUserEmbed.foundUserEmbed],
+                    components: [createdVRCUserEmbed.vrcActionRow]
+                })
+                return
+            }
+            await interaction.editReply("Please link your VRChat account to your Discord account using the `/vrchat link` command to view your account with this command.")
         }
     }
 }
