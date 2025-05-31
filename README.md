@@ -9,12 +9,12 @@
 
 ## VRChat
 - [x] Display any VRChat user's profile.
-- [ ] Link user account to Discord account _(uses database to store userdata),_ use with `/vrchat link` and `/vrchat unlink` commands)_.
+- [x] Link/Unlink user's VRChat profile to Discord account _(uses database to store userdata),_ use with `/vrchat link` and `/vrchat unlink` commands.
 - [x] To view a user's account use the following commands:
-   - [x] `/vrc` to view your currently linked VRChat account _(if your account is linked with the bot's database)_.
-   - [x] `/vrc profile @discordUsername` to view a user's linked VRChat account _(if pinged user has linked thier accounts)_.
-   - [x] `/vrc profile vrchatProfileLink` to view a user's VRChat account via link.
-   - [x] `/vrc profile vrchatUsername` to view a user's VRChat via plain text username/displayName.
+   - [x] `/vrchat profile` to view your currently linked VRChat account _(if your account is linked with the bot's database)_.
+   - [x] `/vrchat profile @discordUsername` to view a user's linked VRChat account _(if pinged user has linked thier accounts)_.
+   - [x] `/vrchat profile https://vrchat.com/home/user/usr_123` to view a user's VRChat account via link.
+   - [x] `/vrchat profile vrchatUsername` to view a user's VRChat via plain text username/displayName.
 - [ ] Capabilities of changing a VRChat member's roles witin' the Server's Group.
 - [ ] _(optional)_ Remove VRChat member from Server's Group.
 - [ ] Send invite link to in-game Group _(need more info on this)_.
@@ -29,7 +29,7 @@
 
 
 # Dependencies:
-[VRChat API](https://vrchatapi.github.io/): Interacting with the VRChat system. <br/>
+[VRChat API](https://vrchat.community): Interacting with the VRChat system. <br/>
 [@kindlyfire/vrchatapi](https://www.npmjs.com/package/@kindlyfire/vrchatapi): Easy interaction and implementation of VRChat's API via Javascript. <br/>
 [PostgreSQL](https://www.npmjs.com/package/pg): SQL-based database handling. <br/>
-[Drizzle](https://orm.drizzle.team/): ORM allowing easy interaction and implementation with PostgreSQL. <br/>
+[Drizzle](https://orm.drizzle.team): ORM allowing easy interaction and implementation with PostgreSQL.

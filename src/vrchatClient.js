@@ -39,7 +39,7 @@ export async function initializeVRC() {
 
 //returns an authenticated vrcClient
 //NOTE: DO NOT USE THIS FOR AUTHORIZING, INSTEAD CREATE A NEW VRCHATAPI
-export function getVRC() {
+export async function getVRC() {
     if(!vrc){ throw new Error('VRChat client not initialized!') }
     return vrc
 }

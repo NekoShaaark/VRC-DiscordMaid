@@ -1,13 +1,11 @@
 //imports
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder } from 'discord.js'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { eq } from 'drizzle-orm'
-import { usersTable } from '../../db/schema.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
+import { getUserInDB, removeUserInDB, createUserInDB } from '../../db/dbHandling.js'
+import { getConfig } from '../../configManager.js'
 import { getVRC } from '../../vrchatClient.js'
-import { createVRCUserEmbed } from './findUser.js'
 
-const db = drizzle(process.env.DATABASE_URL)
-const vrc = getVRC()
+const vrc = await getVRC()
+const config = await getConfig()
 
 const yesButton = new ButtonBuilder()
     .setCustomId('yesButton')
@@ -19,72 +17,95 @@ const noButton = new ButtonBuilder()
     .setStyle(ButtonStyle.Danger)
 const booleanActionRow = new ActionRowBuilder()
     .addComponents(yesButton, noButton)
-    
 
-async function createNewUser(discordUserId, discordUsername, userVRCData){
-    //check if user exists, and return if does
-    if(!getUserInDB(discordUserId, null)){ return null }
-    
-    //check if userVRCData exists, and pull data from it
-    if(!userVRCData){ return null }
-    let vrcUserId = await userVRCData.id
-    let vrcDisplayName = await userVRCData.displayName
-
-    //insert new user with data, and return
-    const newUser = await db
-        .insert(usersTable)
-        .values({
-            discordUserId,
-            discordUsername,
-            vrcUserId,
-            vrcDisplayName
-        })
-        .returning()
-    return newUser[0]
+const trustLevelEnum = Object.freeze({
+    VISITOR: "",
+    NEW: "system_trust_basic",
+    USER: "system_trust_known",
+    KNOWN: "system_trust_trusted",
+    TRUSTED: "system_trust_veteran",
+    VETERAN: "system_trust_legend"
+})
+const vrcStatuses = {
+    "join me": { status: "🔵 Join Me", color: "Blue" },
+    "online": { status: "🟢 Online", color: "Green" },
+    "ask me": { status: "🟠 Ask Me", color: "Orange" },
+    "do not disturb": { status: "🔴 Do Not Disturb", color: "Red" },
+    "active": { status: "⚫ Offline", color: "Grey" }
 }
 
-export async function getUserInDB(discordUserId, vrcUserId){
-    if(discordUserId != null){
-        const currentUser = await db
-            .select()
-            .from(usersTable)
-            .where(eq(usersTable.discordUserId, discordUserId))
-            .limit(1)
-        if(currentUser.length > 0){ return currentUser[0] }
+function formatStatus(userStatus){
+    const statusData = vrcStatuses[userStatus]
+    if(statusData){
+        return {
+            vrcStatus: statusData.status, 
+            color: statusData.color 
+        }
     }
-    else if(vrcUserId != null){
-        const currentUser = await db
-            .select()
-            .from(usersTable)
-            .where(eq(usersTable.vrcUserId, vrcUserId))
-            .limit(1)
-        if(currentUser.length > 0){ return currentUser[0] }
+    //blank handling
+    return {
+        vrcStatus: userStatus, 
+        color: Blurple 
     }
-    //neither user exists
-    return null
 }
 
-export async function removeUserInDB(discordUserId, vrcUserId){
-    if(discordUserId != null){
-        const currentUser = getUserInDB(discordUserId, null)
-        if(currentUser){
-            await db
-                .delete(usersTable)
-                .where(eq(usersTable.discordUserId, discordUserId))
-            return true
+function determineUserTrustRank(userTags){
+    //convert enum to a priority map
+    const trustPriorities = Object.entries(trustLevelEnum)
+        .filter(([_, value]) => value !== "") //remove VISITOR (empty string)
+        .reduce((acc, [key, value], index) => {
+            acc[value] = index
+            return acc
+        }, {})
+    let highestPriority = -1
+    let highestRank = "Visitor" //default, if no trust tags found
+        
+    for(const tag of userTags){
+        if(trustPriorities.hasOwnProperty(tag)){
+            const priority = trustPriorities[tag]
+            if(priority > highestPriority){
+                highestPriority = priority
+                highestRank = Object.keys(trustLevelEnum).find(key => trustLevelEnum[key] === tag)
+            }
         }
     }
-    else if(vrcUserId != null){
-        const currentUser = getUserInDB(null, vrcUserId)
-        if(currentUser){
-            await db
-                .delete(usersTable)
-                .where(eq(usersTable.vrcUserId, vrcUserId))
-            return true
-        }
+    return highestRank.charAt(0) + highestRank.slice(1).toLowerCase()
+}
+
+export async function createVRCUserEmbed(foundUserData, shortOption){
+    const foundUserObject = {
+        displayName: await foundUserData.displayName,
+        status: formatStatus(await foundUserData.status),
+        trustLevel: determineUserTrustRank(await foundUserData.tags),
+        statusText: await foundUserData.statusDescription,
+        bio: await foundUserData.bio,
+        userIcon: await foundUserData.userIcon,
+        userId: await foundUserData.id
     }
-    //neither user got removed
-    return false
+    
+    const foundUserEmbed = new EmbedBuilder()
+        .setColor(foundUserObject.status.color)
+        .setTitle(`VRChat User: ${foundUserObject.displayName}`)
+        .addFields(
+            { name: "Status", value: `**${foundUserObject.status.vrcStatus}**`, inline: true },
+            ...(!shortOption ? [{ name: "Trust Level", value: `**${foundUserObject.trustLevel}**`, inline: true }] : []),
+            { name: "Status Text", value: `${foundUserObject.statusText}`, inline: true },
+            ...(!shortOption ? [{ name: "VRChat Bio", value: `${foundUserObject.bio}` }] : [])
+        )
+        .setFooter({ text: `${foundUserObject.displayName}`,
+            //add icon to footer if it exists
+            ...(foundUserObject.userIcon && foundUserObject.userIcon !== "" ? { iconURL: foundUserObject.userIcon } : {}) })
+        .setTimestamp()
+
+    //button link at bottom of embed message
+    const vrcProfileLink = new ButtonBuilder()
+        .setLabel('Open Website')
+        .setURL(`https://vrchat.com/home/user/${foundUserObject.userId}`)
+        .setStyle(ButtonStyle.Link)
+    const vrcActionRow = new ActionRowBuilder()
+        .addComponents(vrcProfileLink)
+
+    return{ foundUserEmbed, vrcActionRow }
 }
 
 export async function getVRCDataFromUrl(url){ 
@@ -107,11 +128,19 @@ export default {
     data: new SlashCommandBuilder()
         .setName('vrchat')
         .setDescription('something cool here')
-        //TODO: info subcommand
+        //profile subcommand
         .addSubcommand(subcommand => 
             subcommand
-                .setName('info')
-                .setDescription('Info on this Bot!')
+                .setName('profile')
+                .setDescription("Get your VRChat profile, another user's profile, or any VRChat profile link.")
+                .addStringOption(option => 
+                    option
+                        .setName('profile')
+                        .setDescription('Discord mention, VRChat profile link, or VRChat username.'))
+                .addBooleanOption(option => 
+                    option
+                        .setName('short')
+                        .setDescription('Display a shorter version of the profile.')),
         )
         //link subcommand
         .addSubcommand(subcommand => 
@@ -132,16 +161,96 @@ export default {
                 .addStringOption(option => 
                     option
                         .setName('user')
-                        .setDescription('User to unlink the profile of, if not you. Only mods can specify a user or VRChat profile.')
-                )
+                        .setDescription('User to unlink the profile of, if not you. Only mods can specify a user or VRChat profile.'))
         ),
-    cooldown: 64,
+    cooldown: 15,
 
     //runs the command
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand()
         const userInteraction = interaction.user
         await interaction.deferReply()
+
+        //if a new 2FA code is submitted, reboot is required to overcome this
+        if(config.new2faCodeNeeded){
+            await interaction.editReply('Please contact admin to submit new 2fa Code.')
+            return
+        }
+
+        //profile command
+        if(subcommand === "profile"){
+            let foundUser
+            const profileArg = interaction.options.getString('profile')
+            const shortOrLong = interaction.options.getBoolean('short')
+
+            //if "profile" option is given, search for user, otherwise return user from database
+            if(profileArg){
+                await interaction.editReply(`Finding ${profileArg}'s VRChat profile...`)
+                try{
+                    //determine which method to find user, based on targetUser input
+                    //discord mention
+                    if(profileArg.slice(0,2) == "<@"){ 
+                        const mentionedUserId = profileArg.slice(2, -1)
+                        const userInDb = await getUserInDB(mentionedUserId, null)
+                        if(!userInDb){
+                            await interaction.editReply("That user has not linked their VRChat account to their Discord account. \nTo link your accounts, use the `/vrchat link` command.")
+                            return
+                        }
+                        const foundUsers = await vrc.users.get(userInDb.vrcUserId)
+                        foundUser = await foundUsers.data
+                    }
+    
+                    //vrchat profile link
+                    else if(profileArg.slice(0,29) == "https://vrchat.com/home/user/"){
+                        const vrcUserId = profileArg.slice(29)
+                        const foundUsers = await vrc.users.get(vrcUserId)
+                        if(!foundUsers){
+                            await interaction.editReply("Invalid VRChat Profile Link given, please provide a valid Link.")
+                            return
+                        }
+                        foundUser = await foundUsers.data
+                    }
+    
+                    //plain text vrchat username/displayName
+                    else{
+                        const foundUsers = await vrc.users.search(profileArg)
+                        if(!foundUsers){
+                            await interaction.editReply("No VRChat users found containing that name.")
+                            return
+                        }
+                        foundUser = await foundUsers.data[0]
+                    }
+                
+                    //send embed with profile link button
+                    const createdVRCUserEmbed = await createVRCUserEmbed(foundUser, shortOrLong)
+                    await interaction.editReply({
+                        content: "",
+                        embeds: [createdVRCUserEmbed.foundUserEmbed],
+                        components: [createdVRCUserEmbed.vrcActionRow]
+                    })
+                }
+                catch(error){
+                    console.error("An error occured while trying to find the VRChat User, or while creating the VRChat User Embed.", error)
+                    await interaction.editReply("An error occuFred while trying to find that VRChat User.")
+                }
+            }
+            //return user from database, if exists
+            else{
+                await interaction.editReply(`Finding your VRChat profile...`)
+                const userInDb = await getUserInDB(interaction.user.id, null)
+                if(userInDb){
+                    const foundUser = await vrc.users.get(userInDb.vrcUserId)
+                    const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data)
+                    await interaction.editReply({
+                        content: "",
+                        embeds: [createdVRCUserEmbed.foundUserEmbed],
+                        components: [createdVRCUserEmbed.vrcActionRow]
+                    })
+                    return
+                }
+                await interaction.editReply("Please link your VRChat account to your Discord account using the `/vrchat link` command to view your account with this command.")
+            }
+        }
 
         //link subcommand
         if(subcommand === "link"){
@@ -157,11 +266,11 @@ export default {
             //if user already exists, don't need to create new user
             //otherwise, if vrchat is already linked to another user, send explanation
             if(await getUserInDB(userInteraction.id, null)){ 
-                interaction.editReply("You have already linked your VRChat Profile to this Discord account. \n To see your profile use the `/vrc` command. \n Or to unlink your account use the `/vrchat unlink` command.")
+                interaction.editReply("You have already linked your VRChat Profile to this Discord account. \nTo see your profile use the `/vrc profile` command. \nOr to unlink your account use the `/vrchat unlink` command.")
                 return
             }
             else if(await getUserInDB(null, foundUser.id)){
-                interaction.editReply("This VRChat Profile is already linked to someone's Discord account. \n If this Profile is yours, please contact an admin to fix this.")
+                interaction.editReply("This VRChat Profile is already linked to someone's Discord account. \nIf this Profile is yours, please contact an admin to fix this.")
                 return
             }
             
@@ -185,7 +294,7 @@ export default {
                 else if(i.customId === 'yesButton'){
                     try{ 
                         //create user and add it to database
-                        const newUser = await createNewUser(userInteraction.id, userInteraction.username, foundUser) 
+                        const newUser = await createUserInDB(userInteraction.id, userInteraction.username, foundUser) 
                         if(newUser){ 
                             console.log(`Added ${userInteraction.username} to database.`)
                             await i.editReply({ content: `Successfully linked VRChat profile *"${foundUser.displayName}"* to Discord profile *"${userInteraction.username}"*.`, embeds: [], components: [] }) 
@@ -206,13 +315,13 @@ export default {
             let userInDb
             let embedContent = "**Do you want to unlink this User's account?**"
             let vrcAccountToUnlink = interaction.options.getString('user')
-            let adminMode = false
+            let isAdmin = false
             if(vrcAccountToUnlink){
                 const guildMember = await interaction.guild.members.fetch(userInteraction.id)
 
                 //check if user is an admin, and if user exists
                 if(!guildMember.roles.cache.has(process.env.ADMIN_ROLE_ID)){ 
-                    interaction.editReply("You do not have the permission to unlink other user's profiles. \n If you wanted to unlink your Discord account from your VRChat profile, please use the command again, but exclude `user`.")
+                    interaction.editReply("You do not have the permission to unlink other user's profiles. \nIf you wanted to unlink your Discord account from your VRChat profile, please use the command again, but exclude `user`.")
                     return 
                 }
 
@@ -220,7 +329,7 @@ export default {
                 if(vrcAccountToUnlink.slice(0,2) == "<@"){ 
                     const mentionedUserId = vrcAccountToUnlink.slice(2, -1)
                     userInDb = await getUserInDB(mentionedUserId, null)
-                    adminMode = true
+                    isAdmin = true
                     if(!userInDb){ await interaction.editReply("User does not have an account linked."); return }
                 }
 
@@ -228,13 +337,13 @@ export default {
                 else if(vrcAccountToUnlink.slice(0,29) == "https://vrchat.com/home/user/"){
                     const vrcUserId = vrcAccountToUnlink.slice(29)
                     userInDb = await getUserInDB(null, vrcUserId)
-                    adminMode = true
+                    isAdmin = true
                     if(!userInDb){ await interaction.editReply("Invalid VRChat Profile Link given, please provide a valid Link."); return }
                 }
             }
 
             //get userInteraction if userInDb did not get defined above (in admin portion)
-            if(!adminMode){ 
+            if(!isAdmin){ 
                 userInDb = await getUserInDB(userInteraction.id, null)
                 embedContent = "**Is this the account you to unlink from?**"
             }
@@ -260,7 +369,7 @@ export default {
                 await i.deferUpdate()
                 if(i.customId === 'noButton'){
                     //non-admin version (top/if) vs admin version (bottom/else) 
-                    if(!adminMode){ await i.editReply({ content: `Cancelled unlinking your VRChat profile from your Discord profile.`, embeds: [], components: [] }) }
+                    if(!isAdmin){ await i.editReply({ content: `Cancelled unlinking your VRChat profile from your Discord profile.`, embeds: [], components: [] }) }
                     else{ await i.editReply({ content: `Cancelled unlinking ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) }
                     return
                 }
@@ -270,13 +379,13 @@ export default {
                         const userDeleted = await removeUserInDB(userInteraction.id, null)
                         if(userDeleted){ 
                             console.log(`Removed ${userInteraction.username} from database.`)
-                            if(!adminMode){ await i.editReply({ content: `Successfully unlinked your VRChat profile from their Discord profile.`, embeds: [], components: [] })  }
+                            if(!isAdmin){ await i.editReply({ content: `Successfully unlinked your VRChat profile from their Discord profile.`, embeds: [], components: [] })  }
                             else{ await i.editReply({ content: `Successfully unlinked ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) }
                         }
                     }
                     catch(error){ 
                         console.error(error)
-                        if(!adminMode){ await i.editReply({ content: "There was an error unlinking your accounts, please try again or contact an admin.", embeds: [], components: [] }) }
+                        if(!isAdmin){ await i.editReply({ content: "There was an error unlinking your accounts, please try again or contact an admin.", embeds: [], components: [] }) }
                         else{ await i.editReply({ content: `There was an error unlinking ${userDeletedUsername}'s accounts, please try again or contact the owner.`, embeds: [], components: [] }) }
                     }
                 }

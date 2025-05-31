@@ -1,5 +1,5 @@
 //imports
-import { SlashCommandBuilder } from 'discord.js'
+import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
 import { VRChatApi } from '@kindlyfire/vrchatapi'
 import { getConfig } from '../../configManager.js'
 
@@ -21,7 +21,8 @@ export default {
                 .setDescription('The new code')
                 .setMinLength(6)
                 .setMaxLength(6)
-                .setRequired(true)),
+                .setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     cooldown: 6,
 
     //runs the command
