@@ -1,6 +1,17 @@
 //imports
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
-import { createUserNoteInDB, getUserNoteInDB } from '../../db/dbHandling.js'
+import { createUserNoteInDB, getAllUserNotesInDB, getUserNoteInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
+
+const yesButton = new ButtonBuilder()
+    .setCustomId('yesButton')
+    .setLabel('Yes')
+    .setStyle(ButtonStyle.Success)
+const noButton = new ButtonBuilder()
+    .setCustomId('noButton')
+    .setLabel('No')
+    .setStyle(ButtonStyle.Danger)
+const booleanActionRow = new ActionRowBuilder()
+    .addComponents(yesButton, noButton)
 
 
 async function createUserNoteEmbed(interaction, userNoteData, userNoteOption, userNoteIndex, userNoteLength){
@@ -60,7 +71,7 @@ async function handlePageEmbed(interaction, array){
     
     //run button handler (collector)
     const filter = i => i.user.id === interaction.user.id
-    const collector = message.createMessageComponentCollector({ filter, time: 60000 })
+    const collector = message.createMessageComponentCollector({ filter, time: 90000 })
     collector.on('collect', async i => {
         if(i.customId === 'superLeftButton'){ currentIndex = (currentIndex-5 + embeds.length) % embeds.length }
         else if(i.customId === 'leftButton'){ currentIndex = (currentIndex === 0) ? embeds.length-1 : currentIndex-1 }
@@ -101,12 +112,11 @@ export default {
     data: new SlashCommandBuilder()
         .setName('mod')
         .setDescription("Moderation commands!!")
-        //TODO: usernote subcommand group
-        //REVIEW: might not need this, and can instead be "usernote-add" and "usernote-remove", ask jack
+        //usernote subcommand group
         .addSubcommandGroup(group => 
             group
                 .setName('usernote')
-                .setDescription("Add/Delete/View notes made, or make notes on Users.")
+                .setDescription("Add/Remove/View notes made, or make notes on Users.")
                 //add usernote subcommand
                 .addSubcommand(subcommand =>
                     subcommand
@@ -123,7 +133,7 @@ export default {
                                 .setDescription("Note about User.")
                                 .setRequired(true))
                 )
-                //TODO: remove usernote subcommand
+                //remove usernote subcommand
                 .addSubcommand(subcommand =>
                     subcommand
                         .setName('remove')
@@ -135,8 +145,7 @@ export default {
                                 .setRequired(true))
                 )
                 //view usernote subcommand
-                //TODO: view all usernotes
-                .addSubcommand(subcommand => 
+                .addSubcommand(subcommand =>    
                     subcommand
                         .setName('view')
                         .setDescription('View notes on a specific User.')
@@ -148,6 +157,12 @@ export default {
                             option
                                 .setName('noteid')
                                 .setDescription('Note ID to view (optional).'))
+                )
+                //view-all usernote subcommand
+                .addSubcommand(subcommand => 
+                subcommand
+                    .setName('view-all')
+                    .setDescription('View all notes in existence ever.')
                 )
         )
         //TODO: group-user subcommand
@@ -178,8 +193,52 @@ export default {
 
                 await interaction.editReply({ content: "", embeds: [userNoteEmbed] }) //flags: MessageFlags.Ephemeral
             }
+            //usernote remove subcommand
+            if(subcommand === "remove"){
+                const noteIdArg = interaction.options.getString("noteid")
+
+                //check if note exists, if is ask if the user wants to remove it
+                const foundUserNote = await getUserNoteInDB(null, noteIdArg)
+                if(!foundUserNote){ interaction.editReply("This Note ID does not exist."); return }
+                const userNoteEmbed = await createUserNoteEmbed(interaction, foundUserNote, "view")
+                const embedMessage = await interaction.editReply({
+                    content: "**Are you sure you want to remove this Note?**",
+                    embeds: [userNoteEmbed],
+                    components: [booleanActionRow]
+                })
+
+                //run button handler (collector)
+                const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+                const collector = embedMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
+                collector.on('collect', async i => {
+                    await i.deferUpdate()
+                    if(i.customId === 'noButton'){
+                        await i.editReply({ content: `Cancelled removing noteId ${noteIdArg}.`, embeds: [], components: [] })
+                        return
+                    }
+                    else if(i.customId === 'yesButton'){
+                        try{ 
+                            //delete note from database
+                            const noteDeleted = await removeUserNoteInDB(noteIdArg)
+                            if(noteDeleted){ 
+                                console.log(`Removed noteId ${noteIdArg} from database.`)
+                                await i.editReply({ content: `Successfully deleted noteId ${noteIdArg}.`, embeds: [], components: [] })
+                            }
+                        }
+                        catch(error){ 
+                            console.error(error)
+                            await i.editReply({ content: `There was an error deleting noteId ${noteIdArg}, please try again or contact the owner.`, embeds: [], components: [] })
+                        }
+                    }
+                })
+                //on collector timer's end
+                collector.on('end', async (collected) => {
+                    if(collected.size === 0){ await embedMessage.edit({ content: `Cancelled removing noteId ${noteIdArg}.`, embeds: [], components: [] }) }
+                    return
+                })
+            }
             //usernote view subcommand
-            if(subcommand == "view"){
+            if(subcommand === "view"){
                 const noteIdArg = interaction.options.getString("noteid")
                 const userArg = interaction.options.getUser("user")
 
@@ -204,6 +263,13 @@ export default {
 
                 //no arguments given
                 else{ await interaction.editReply("Please provide a User or NoteID to view.") }
+            }
+            //usernote view-all subcommand
+            if(subcommand === "view-all"){
+                let allUserNotesInDb = await getAllUserNotesInDB()
+                if(!allUserNotesInDb){ await interaction.editReply('There are no notes currently stored. To store a note on a User, use the `/mod usernote add @ping "noteHere"` command.'); return }
+                await interaction.editReply("This might take a while, please be patient, and no not run the command again until this message changes.")
+                await handlePageEmbed(interaction, allUserNotesInDb)
             }
         }
     }

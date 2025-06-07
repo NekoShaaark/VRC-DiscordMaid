@@ -356,7 +356,7 @@ export default {
             const foundUser = await vrc.users.get(userInDb.vrcUserId)
             const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data)
             const userDeletedUsername = userInDb.discordUsername
-            await interaction.editReply({ 
+            const embedMessage = await interaction.editReply({ 
                 content: embedContent,
                 embeds: [createdVRCUserEmbed.foundUserEmbed],
                 components: [booleanActionRow]
@@ -364,7 +364,7 @@ export default {
 
             //run button handler (collector)
             const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
-            const collector = interaction.channel.createMessageComponentCollector({ filter, max:1, time:15000 })
+            const collector = embedMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
             collector.on('collect', async i => {
                 await i.deferUpdate()
                 if(i.customId === 'noButton'){
@@ -390,7 +390,14 @@ export default {
                     }
                 }
             })
-            return
+            //on collector timer's end
+            collector.on('end', async (collected) => {
+                if(collected.size === 0){ 
+                    if(!isAdmin){ await embedMessage.edit({ content: `Cancelled unlinking your VRChat profile from your Discord profile.`, embeds: [], components: [] }) }
+                    else{ await embedMessage.edit({ content: `Cancelled unlinking ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) }
+                }
+                return
+            })
         }
     }
 }

@@ -92,7 +92,6 @@ export async function getUserNoteInDB(discordUserId, noteId){
     return null
 }
 
-//STUB: might not work, test this
 export async function getAllUserNotesInDB(){
     let allNotes = await db
         .select()
