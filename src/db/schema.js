@@ -16,6 +16,7 @@ export const usersTable = pgTable('users', {
 export const userNotesTable = pgTable('user_notes', {
   id: serial('id').primaryKey(), //internal id
   discordUserId: text('discord_user_id').notNull(), //discord id
+  discordUsername: text('discord_username').notNull(),
   note: text('note').notNull(),
   noteId: serial('noteId').notNull(), //note id
   createdAt: timestamp('created_at').defaultNow().notNull()

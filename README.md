@@ -2,7 +2,7 @@
 
 ## Logging
 - [ ] Make logs of activities in the Server.
-- [ ] Retrieve all logs of a specific User.
+- [ ] Retrieve all logs of a specific User _(messages or actions that User did)_.
 - [ ] Keep track of changes within' the Server _(could be stored in the database, or on a Server channel)_ including: 
    - [ ] Member joins/leaves/is kicked/is banned.
    - [ ] Role change of a member (removing/adding).
@@ -22,7 +22,9 @@
 ## Moderation
 - [ ] Kicking/ban any user with custom message.
    - [ ] _(optional)_ Send mp4 file to banned user _(might be against Discord TOS)_.
-- [ ] Make notes on specified user(s).
+- [x] Add/Remove/View notes on specified users.
+   - [x] Mass-remove notes via array of Note IDs.
+   - [x] Log notes into logging channel.
 
 ## General
 - [ ] Welcome new users with custom message(s). _eg. `Please give our newest guest, @username, a warm welcome.`_

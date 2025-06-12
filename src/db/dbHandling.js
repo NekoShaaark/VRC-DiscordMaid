@@ -113,7 +113,7 @@ export async function removeUserNoteInDB(noteId){
     return false
 }
 
-export async function createUserNoteInDB(discordUserId, userNote){
+export async function createUserNoteInDB(discordUserId, discordUsername, userNote){
     //check if user exists, and return if does
     if(!getUserNoteInDB(discordUserId, null)){ return null }
     if(!discordUserId || !userNote){ return null }
@@ -124,6 +124,7 @@ export async function createUserNoteInDB(discordUserId, userNote){
         .insert(userNotesTable)
         .values({
             discordUserId,
+            discordUsername,
             note
         })
         .returning()
