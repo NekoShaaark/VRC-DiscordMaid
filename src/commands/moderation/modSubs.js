@@ -1,5 +1,5 @@
 //imports
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
 import { createUserNoteInDB, getAllUserNotesInDB, getUserNoteInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
 
 let currentComponents
@@ -146,7 +146,63 @@ async function handleMassNoteRemoval(embedMessage, loggingChannel, array){
 
     console.log(`Removed ${messageContext} ${removedNotesMessage} from database.`)
     await embedMessage.edit({ content: `Successfully deleted ${messageContext} ${removedNotesMessage}.`, embeds: [], components: [] })
-    await loggingChannel.send({ content: `Successfully deleted ${messageContext} ${removedNotesMessage}.` })
+    await loggingChannel.send({ content: `${interaction.user} deleted ${messageContext} ${removedNotesMessage}.` })
+}
+
+async function handleConfirmationMessage(message, userArg, contextType){
+    return new Promise((resolve) => {
+        let messageContext
+        switch(contextType){
+            case "ban": messageContext = "banning"; break
+            case "unban": messageContext = "unbanning"; break
+            case "kick": messageContext = "kicking"; break
+            case "timeout": messageContext = "giving timeout to"; break
+            case "untimeout": messageContext = "removing timeout from"; break
+        }
+        
+        //run button handler (collector)
+        const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+        const collector = message.createMessageComponentCollector({ filter, max:1, time:15000 })
+        collector.on('collect', async i => {
+            await i.deferUpdate()
+            if(i.customId === 'noButton'){
+                await i.editReply({ content: `Cancelled ${messageContext} ${userArg}.`, embeds: [], components: [] })
+                resolve(false)
+            }
+            else if(i.customId === 'yesButton'){
+                await i.editReply({ content: `Now ${messageContext} ${userArg}...`, embeds: [], components: [] })
+                resolve(true)
+            }
+        })
+        //on collector timer's end
+        collector.on('end', async (collected) => {
+            if(collected.size === 0){ 
+                await message.edit({ content: `Cancelled ${messageContext} ${userArg}.`, embeds: [], components: [] }) 
+                resolve(false)
+            }
+        })
+    })
+}
+
+async function convertMinutesToString(inputMinutes){
+    if(inputMinutes < 60){ return ' ' }
+
+    const days = Math.floor(inputMinutes / 1440)
+    const hours = Math.floor((inputMinutes % 1440) / 60)
+    const minutes = inputMinutes % 60
+    
+    let resultTime = ''
+    if(days > 0){ resultTime += `${days} day${days > 1 ? 's' : ''}` }
+    if(hours > 0){
+        if(resultTime){ resultTime += ', ' }
+        resultTime += `${hours} hour${hours > 1 ? 's' : ''}`
+    }
+    if(minutes > 0){
+        if(resultTime){ resultTime += ', ' }
+        resultTime += `${minutes} minute${minutes > 1 ? 's' : ''}`
+    }
+    
+    return ` (${resultTime}) ` || '0 minutes'
 }
 
 
@@ -214,6 +270,81 @@ export default {
                 .setName('group-user')
                 .setDescription("Get user's VRChat profile in Group.")
         )
+        //ban subcommand
+        .addSubcommand(subcommand => 
+            subcommand
+                .setName('ban')
+                .setDescription("Ban a specific User.")
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription("User to ban.")
+                        .setRequired(true))
+                .addStringOption(option => 
+                    option
+                        .setName('reason')
+                        .setDescription("Reason for ban.")
+                        .setRequired(true))
+        )
+        //unban subcommand
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('unban')
+                .setDescription('Unban a specific User.')
+                .addStringOption(option =>
+                    option
+                        .setName('userid')
+                        .setDescription("User to unban (provide id).")
+                        .setRequired(true))
+        )
+        //kick subcommand
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('kick')
+                .setDescription('Kick a specific User.')
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription("User to kick.")
+                        .setRequired(true))
+                .addStringOption(option =>
+                    option
+                        .setName('reason')
+                        .setDescription("Reason for kick.")
+                        .setRequired(true))
+        )
+        //timeout subcommand
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('timeout')
+                .setDescription("Timeout a specific User.")
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription("User to timeout.")
+                        .setRequired(true))
+                .addNumberOption(option => 
+                    option
+                        .setName('minutes')
+                        .setDescription("Length of timeout (in minutes).")
+                        .setRequired(true))
+                .addStringOption(option =>
+                    option
+                        .setName('reason')
+                        .setDescription("Reason for timeout.")
+                        .setRequired(true))
+        )
+        //untimeout subcommand
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('untimeout')
+                .setDescription("Remove timeout from a specific User.")
+                .addUserOption(option => 
+                    option
+                        .setName('user')
+                        .setDescription("User to remove timeout from.")
+                        .setRequired(true))
+        )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages), //STUB: maybe change this
     cooldown: 8,
 
@@ -222,7 +353,7 @@ export default {
         const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
         const subcommandGroup = interaction.options.getSubcommandGroup()
         const subcommand = interaction.options.getSubcommand()
-        await interaction.deferReply() //{ flags: MessageFlags.Ephemeral }
+        await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
 
         //usernote subcommandGroup
         if(subcommandGroup === "usernote"){
@@ -236,7 +367,7 @@ export default {
                 const userNoteEmbed = await createUserNoteEmbed(newUserNote, "add")
 
                 await interaction.editReply({ content: "", embeds: [userNoteEmbed] })
-                await loggingChannel.send({ content: "", embeds: [userNoteEmbed] })
+                await loggingChannel.send({ content: `${interaction.user} added note`, embeds: [userNoteEmbed] })
             }
             //usernote remove subcommand
             if(subcommand === "remove"){
@@ -332,7 +463,7 @@ export default {
                                 if(noteDeleted){ 
                                     console.log(`Removed noteId ${noteIdArg} from database.`)
                                     await i.editReply({ content: `Successfully deleted noteId ${noteIdArg}.`, embeds: [], components: [] })
-                                    await loggingChannel.send({ content: `Successfully deleted noteId ${noteIdArg}.` })
+                                    await loggingChannel.send({ content: `${interaction.user} deleted noteId ${noteIdArg}.` })
                                 }
                             }
                         }
@@ -385,6 +516,142 @@ export default {
                 if(!allUserNotesInDb[0]){ await interaction.editReply('There are no notes currently stored. To store a note on a User, use the `/mod usernote add @ping "noteHere"` command.'); return }
                 await interaction.editReply("This might take a while, please be patient, and do not run the command again until this message changes.")
                 await handlePageEmbed(interaction, allUserNotesInDb, false)
+            }
+        }
+
+        //ban/kick subcommand
+        if(subcommand === "ban" || subcommand === "kick"){
+            let messageContext1
+            let messageContext2
+            if(subcommand === "ban"){
+                messageContext1 = "banning"
+                messageContext2 = "banned"
+            }
+            else if(subcommand === "kick"){
+                messageContext1 = "kicking"
+                messageContext2 = "kicked"
+            }
+
+            const userArg = interaction.options.getUser("user")
+            const reasonArg = interaction.options.getString("reason")
+
+            if(userArg === process.env.CLIENT_ID){ interaction.editReply(`You can't ${subcommand} me using myself, silly...`); return }
+            if(userArg === interaction.user){ interaction.editReply(`You can't ${subcommand} yourself, silly~`); return}
+            if(!userArg){ interaction.editReply(`Please provide a valid User to ${subcommand}.`); return }
+            if(!reasonArg){ interaction.editReply(`Please provide a reason for ${messageContext1} this User.`); return }
+
+            const confirmationMessage = await interaction.editReply({ content: `Do you want to ${subcommand} ${userArg} for "${reasonArg}"?`, components: [booleanActionRow] })
+            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, subcommand)
+            
+            if(confirmationResult === true){ 
+                try{ 
+                    if(subcommand === "ban"){ await interaction.guild.members.ban(userArg, {reason: reasonArg}) }
+                    else if(subcommand === "kick"){ await interaction.guild.members.kick(userArg, {reason: reasonArg}) }
+                    await interaction.editReply(`Successfully ${messageContext2} ${userArg} for "${reasonArg}".`) 
+                    await loggingChannel.send({ content: `${interaction.user} ${messageContext2} ${userArg} for "${reasonArg}".` })
+                    return
+                }
+                catch(error){
+                    if(error.code == 50013){ await interaction.editReply(`Provided User cannot be ${messageContext2}. Permission level is higher than me.`) }
+                    else{
+                        console.error(`Error ${messageContext1} user:`, error) 
+                        await interaction.editReply(`An error occurred while trying to ${subcommand} ${userArg}. Please try again, or check console for more info.`) 
+                    }
+                }
+            }
+        }
+        //unban subcommand
+        if(subcommand === "unban"){
+            const userArg = interaction.options.getString("userid")
+            try{ await interaction.guild.bans.fetch(userArg) } //handle user cannot be found/unbanned
+            catch(error){
+                if(error.code == 10026){ await interaction.editReply("Provided UserID does not exist, or is already unbanned. Please enter a valid UserID."); return }
+                else{
+                    console.error("Error finding user:", error)
+                    await interaction.editReply("An error occurred while trying to find that user. Please try again, or check console for more info.")
+                }
+            }
+            
+            const bannedUser = await interaction.guild.bans.fetch(userArg)
+            if(!bannedUser){ interaction.editReply("Please provide a valid User to unban."); return }
+
+            const userToUnban = bannedUser.user
+            const confirmationMessage = await interaction.editReply({ content: `Do you want to unban ${userToUnban}? \nUser was previous banned for "${bannedUser.reason}"`, components: [booleanActionRow] })
+            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userToUnban, "unban")
+
+            if(confirmationResult === true){
+                try{
+                    await interaction.guild.members.unban(userToUnban)
+                    await interaction.editReply(`Unbanned ${userToUnban}.`)
+                    await loggingChannel.send({ content: `${interaction.user} unbanned ${userToUnban}.` })
+                    return
+                }
+                catch(error){
+                    console.error("Error unbanning user:", error)
+                    await interaction.editReply(`An error occurred while trying to unban ${userToUnban}. Please try again, or check console for more info.`)
+                }
+            }
+        }
+        //timeout subcommand
+        if(subcommand === "timeout"){
+            const userArg = interaction.options.getUser("user")
+            const lengthArg = interaction.options.getNumber("minutes")
+            const reasonArg = interaction.options.getString("reason")
+            
+            if(userArg === process.env.CLIENT_ID){ interaction.editReply("You can't time me out using myself, silly..."); return }
+            if(userArg === interaction.user){ interaction.editReply("You can't time yourself out, silly~"); return}
+            if(!userArg){ interaction.editReply("Please provide a valid User to timeout."); return }
+            if(!reasonArg){ interaction.editReply("Please provide a reason for timing this User out."); return }
+            if(!lengthArg || lengthArg < 0){ interaction.editReply("Please provide a valid length (in numerical form)."); return }
+            if(lengthArg > 40320){ interaction.editReply("40320 minutes (28 days) is the max amount of days allowed by Discord.\nPlease provide a smaller time."); return }
+
+            const timeoutLength = lengthArg * 60000 //convert time to minutes
+            const convertedTime = await convertMinutesToString(lengthArg)
+            const confirmationMessage = await interaction.editReply({ content: `Do you want to timeout ${userArg} for ${lengthArg} minutes${convertedTime}for "${reasonArg}"?`, components: [booleanActionRow] })
+            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, "timeout")
+
+            if(confirmationResult === true){ 
+                try{ 
+                    const guildMember = await interaction.guild.members.cache.get(userArg.id)
+                    await guildMember.timeout(timeoutLength)
+                    await interaction.editReply(`Successfully timed ${userArg} out for ${lengthArg} minutes${convertedTime}for "${reasonArg}".`) 
+                    await loggingChannel.send({ content: `${interaction.user} timed out ${userArg} for ${lengthArg} minutes for "${reasonArg}".` })
+                    return
+                }
+                catch(error){
+                    if(error.code == 50013){ await interaction.editReply(`Provided User cannot be timed out. Permission level is higher than me.`) }
+                    else{
+                        console.error(`Error timing out user:`, error) 
+                        await interaction.editReply(`An error occurred while trying to give timeout to ${userArg}. Please try again, or check console for more info.`) 
+                    }
+                }
+            }
+        }
+        //untimeout subcommand
+        //TODO: add reason for timeout (fetch from database logging system)
+        if(subcommand === "untimeout"){
+            const userArg = interaction.options.getUser('user')
+            const guildMember = await interaction.guild.members.cache.get(userArg.id)
+            const timeoutEnd = await guildMember.communicationDisabledUntil
+
+            if(!userArg){ interaction.editReply("Please provide a valid User to remove timeout from."); return }
+            if(!timeoutEnd){ interaction.editReply('User is not currently timed out. \nTo timeout a User, use the "/mod timeout" slashcommand.'); return }
+        
+            //TODO: add reason for timeout
+            const confirmationMessage = await interaction.editReply({ content: `${userArg}'s timeout ends ${time(timeoutEnd, TimestampStyles.RelativeTime)}. \nThey were timed out for "%REASON_HERE%". \nDo you want to remove their timeout?`, components: [booleanActionRow] })
+            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, "untimeout")
+        
+            if(confirmationResult === true){
+                try{
+                    await guildMember.timeout(null)
+                    await interaction.editReply(`Removed timeout from ${userArg}.`)
+                    await loggingChannel.send({ content: `${interaction.user} removed timeout from ${userArg}. \nThey were previously timed out for "%REASON_HERE%".` })
+                    return
+                }
+                catch(error){
+                    console.error("Error removing timeout from user:", error)
+                    await interaction.editReply(`An error occurred while trying to remove timeout from ${userArg}. Please try again, or check console for more info.`)
+                }
             }
         }
     }

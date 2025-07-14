@@ -167,6 +167,7 @@ export default {
 
     //runs the command
     async execute(interaction) {
+        const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
         const subcommand = interaction.options.getSubcommand()
         const userInteraction = interaction.user
         await interaction.deferReply()
@@ -380,7 +381,10 @@ export default {
                         if(userDeleted){ 
                             console.log(`Removed ${userInteraction.username} from database.`)
                             if(!isAdmin){ await i.editReply({ content: `Successfully unlinked your VRChat profile from their Discord profile.`, embeds: [], components: [] })  }
-                            else{ await i.editReply({ content: `Successfully unlinked ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) }
+                            else{ 
+                                await i.editReply({ content: `Successfully unlinked ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) 
+                                await loggingChannel.send({ content: `${interaction.user} unlinked ${userDeletedUsername}'s VRChat profile from their Discord profile.` })
+                            }
                         }
                     }
                     catch(error){ 

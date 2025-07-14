@@ -4,7 +4,7 @@ import 'module-alias/register.js'
 import { readdirSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
-import { Client, Collection, GatewayIntentBits } from 'discord.js'
+import { ActivityType, Client, Collection, GatewayIntentBits } from 'discord.js'
 import { initializeVRC } from './vrchatClient.js'
 dotenv.config()
 
@@ -12,9 +12,15 @@ dotenv.config()
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildModeration
+  ],
+  presence: { 
+    activities: [{ name: "the Stars.", type: ActivityType.Listening }],
+    status: 'online'    
+  }
 })
 client.commands = new Collection()
 client.cooldowns = new Collection()

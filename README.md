@@ -20,14 +20,14 @@
 - [ ] Send invite link to in-game Group _(need more info on this)_.
 
 ## Moderation
-- [ ] Kicking/ban any user with custom message.
-   - [ ] _(optional)_ Send mp4 file to banned user _(might be against Discord TOS)_.
+- [x] Kick/ban/timeout any user with reason _(then send message in logging channel)_.
+   - [ ] _(optional)_ Send mp4 file (or reason for ban/kick) to banned user _(might be against Discord TOS)_.
 - [x] Add/Remove/View notes on specified users.
    - [x] Mass-remove notes via array of Note IDs.
    - [x] Log notes into logging channel.
 
 ## General
-- [ ] Welcome new users with custom message(s). _eg. `Please give our newest guest, @username, a warm welcome.`_
+- [x] Welcome new users with custom message(s). _eg. `Please give our newest guest, @username, a warm welcome.`_
 
 
 # Dependencies:
