@@ -34,7 +34,7 @@ const vrcStatuses = {
     "active": { status: "⚫ Offline", color: "Grey" }
 }
 
-function formatStatus(userStatus){
+async function formatStatus(userStatus){
     const statusData = vrcStatuses[userStatus]
     if(statusData){
         return {
@@ -49,7 +49,7 @@ function formatStatus(userStatus){
     }
 }
 
-function determineUserTrustRank(userTags){
+async function determineUserTrustRank(userTags){
     //convert enum to a priority map
     const trustPriorities = Object.entries(trustLevelEnum)
         .filter(([_, value]) => value !== "") //remove VISITOR (empty string)
@@ -75,8 +75,8 @@ function determineUserTrustRank(userTags){
 export async function createVRCUserEmbed(foundUserData, shortOption){
     const foundUserObject = {
         displayName: await foundUserData.displayName,
-        status: formatStatus(await foundUserData.status),
-        trustLevel: determineUserTrustRank(await foundUserData.tags),
+        status: await formatStatus(await foundUserData.status),
+        trustLevel: await determineUserTrustRank(await foundUserData.tags),
         statusText: await foundUserData.statusDescription,
         bio: await foundUserData.bio,
         userIcon: await foundUserData.userIcon,
@@ -232,7 +232,7 @@ export default {
                 }
                 catch(error){
                     console.error("An error occured while trying to find the VRChat User, or while creating the VRChat User Embed.", error)
-                    await interaction.editReply("An error occuFred while trying to find that VRChat User.")
+                    await interaction.editReply("An error occured while trying to find that VRChat User.")
                 }
             }
             //return user from database, if exists

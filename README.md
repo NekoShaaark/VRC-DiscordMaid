@@ -3,6 +3,7 @@
 ## Logging
 - [ ] Make logs of activities in the Server.
 - [ ] Retrieve all logs of a specific User _(messages or actions that User did)_.
+- [ ] Archive old logs every x months, then delete those "archived" logs after x months _(can "unarchive" and view logs if wanted)_.
 - [ ] Keep track of changes within' the Server _(could be stored in the database, or on a Server channel)_ including: 
    - [ ] Member joins/leaves/is kicked/is banned.
    - [ ] Role change of a member (removing/adding).

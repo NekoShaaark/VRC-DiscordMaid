@@ -1,6 +1,6 @@
 //imports
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
-import { createUserNoteInDB, getAllUserNotesInDB, getUserNoteInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
+import { createUserNoteInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
 
 let currentComponents
 const yesButton = new ButtonBuilder()
@@ -22,21 +22,62 @@ async function createUserNoteEmbed(userNoteData, userNoteOption, userNoteIndex, 
     if(userNoteOption == "view"){ handledUserNote = "for:" }
     if(userNoteIndex && userNoteLength > 1){ userNotePlacement = `${userNoteIndex}/${userNoteLength}` }
     
-    const createdAtDate = (userNoteData.createdAt).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })
+    const footerCreatedAtDate = await formatDateToLocaleString(userNoteData.createdAt, "long")
     const userNoteEmbed = new EmbedBuilder()
         .setColor('Greyple')
         .setTitle(`User Note ${handledUserNote} ${userNoteData.discordUsername}`)
         .addFields({ name: `Note ${userNotePlacement}`, value: `${userNoteData.note}` })
-        .setFooter({ text: `NoteID: ${userNoteData.noteId}  •  ${createdAtDate}` })
+        .setFooter({ text: `NoteID: ${userNoteData.noteId}  •  ${footerCreatedAtDate}` })
     return userNoteEmbed
 }
 
-async function handlePageEmbed(interaction, array, removeMultipleNotes){
+async function createServerLogEmbed(interaction, serverLogData, serverLogOption, serverLogIndex, serverLogLength){
+    let handledServerLog = ""
+    let serverLogPlacement = ""
+
+    //try to fetch guildMember, else return id (instead of ping)
+    let guildMember
+    try{ guildMember = await interaction.guild.members.fetch(serverLogData.discordUserId) }
+    catch{ guildMember = serverLogData.discordUserId }
+    
+    //try to fetch affectedGuildMember if any, else return null (instead of ping)
+    let affectedGuildMember = serverLogData.affectedDiscordUserId
+    if(affectedGuildMember){ 
+        try{ affectedGuildMember = await interaction.guild.members.fetch(serverLogData.affectedDiscordUserId) }
+        catch{ affectedGuildMember = null }
+    }
+
+    if(serverLogOption == "view"){ handledServerLog = `Server Log for: ${guildMember.displayName}` }
+    if(serverLogOption == "view-all"){ handledServerLog = "All Server Logs" }
+    if(serverLogIndex && serverLogLength > 1){ serverLogPlacement = `${serverLogIndex}/${serverLogLength}` }
+
+    let accountCreatedAtDate = await formatDateToLocaleString(serverLogData.details.accountCreatedAt)
+    const footerCreatedAtDate = await formatDateToLocaleString(serverLogData.createdAt, "long")
+    
+    const serverLogEmbed = new EmbedBuilder()
+        .setColor('Greyple')
+        .setTitle(handledServerLog)
+        .addFields(
+            { name: `Server Log ${serverLogPlacement}`, value: `` },
+            { name: `Event Type`, value: `${serverLogData.eventType}`, inline: true },
+            { name: `User`, value: `${guildMember}`, inline: true },
+            ...(affectedGuildMember ? [{ name: `Affected User`, value: `${affectedGuildMember}`, inline: true }] : []),
+            ...(accountCreatedAtDate ? [{ name: `Account Created`, value: `${accountCreatedAtDate}`, inline: true }] : [])
+        )
+        .setFooter({ text: `LogID: ${serverLogData.logId}  •  ${footerCreatedAtDate}` })
+    return serverLogEmbed
+}
+
+async function handlePageEmbed(interaction, array, removeMultipleNotes, embedType){
     if(!array){ return null }
 
+    let embeds
     let currentIndex = 0
     let row = new ActionRowBuilder()
-    const embeds = await Promise.all(array.map((note, index) => createUserNoteEmbed(note, "view", index+1, array.length)))
+    
+    if(embedType == "userNote"){ embeds = await Promise.all(array.map((note, index) => createUserNoteEmbed(note, "view", index+1, array.length))) }
+    else if(embedType == "serverLog"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view", index+1, array.length))) }
+    else if(embedType == "serverLog-all"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-all", index+1, array.length))) }
     
     //left and right buttons
     const superLeftButton = new ButtonBuilder()
@@ -111,14 +152,14 @@ async function handlePageEmbed(interaction, array, removeMultipleNotes){
     }
 }
 
-async function formatNotesArrayMessage(notesArray, startingMessage){
+async function formatEntriesArrayMessage(array, entryId, startingMessage){
 
     //determine if it's an array of objects or raw values
-    const values = notesArray.map(entry => entry.noteId ?? entry)
+    const values = array.map(entry => entry[entryId] ?? entry)
     const lastValue = values.pop() //remove and save the last one
 
     let formattedMessage
-    if(notesArray.length >= 2){ 
+    if(array.length >= 2){ 
         const messageParts = startingMessage.trim().split(/\s+/) //split on spaces
         messageParts.pop() //remove the last item (same as lastValue)
         formattedMessage = `${messageParts.join(' ')} and ${lastValue}`
@@ -127,26 +168,26 @@ async function formatNotesArrayMessage(notesArray, startingMessage){
     return formattedMessage
 }
 
-async function handleMassNoteRemoval(embedMessage, loggingChannel, array){
+async function handleMassDBEntryRemoval(interaction, embedMessage, loggingChannel, array, deleteFunction, removalType){
     if(!array){ return null }
 
-    let removedNotes = []
-    let removedNotesArrayMessage = ""
-    let messageContext = "noteId"
-    await Promise.all(array.map(async (note) => {
-        const noteId = note.noteId
-        const noteRemoved = await removeUserNoteInDB(noteId)
-        if(noteRemoved){ 
-            removedNotes.push(noteId)
-            removedNotesArrayMessage += `${noteId}, `
+    let removedEntries = []
+    let removedEntriesArrayMessage = ""
+    let messageContext = removalType
+    await Promise.all(array.map(async (item) => {
+        const entryId = item[messageContext]
+        const entryRemoved = await deleteFunction(entryId)
+        if(entryRemoved){ 
+            removedEntries.push(entryId)
+            removedEntriesArrayMessage += `${entryId}, `
         }
     }))
-    const removedNotesMessage = await formatNotesArrayMessage(removedNotes, removedNotesArrayMessage)
-    if(removedNotes.length >= 2){ messageContext = "noteIds" }
+    const removedEntriesMessage = await formatEntriesArrayMessage(removedEntries, removalType, removedEntriesArrayMessage)
+    if(removedEntries.length >= 2){ messageContext += "s" }
 
-    console.log(`Removed ${messageContext} ${removedNotesMessage} from database.`)
-    await embedMessage.edit({ content: `Successfully deleted ${messageContext} ${removedNotesMessage}.`, embeds: [], components: [] })
-    await loggingChannel.send({ content: `${interaction.user} deleted ${messageContext} ${removedNotesMessage}.` })
+    console.log(`Removed ${messageContext} ${removedEntriesMessage} from database.`)
+    await embedMessage.edit({ content: `Successfully deleted ${messageContext} ${removedEntriesMessage}.`, embeds: [], components: [] })
+    await loggingChannel.send({ content: `${interaction.user} deleted ${messageContext} ${removedEntriesMessage}.` })
 }
 
 async function handleConfirmationMessage(message, userArg, contextType){
@@ -205,6 +246,153 @@ async function convertMinutesToString(inputMinutes){
     return ` (${resultTime}) ` || '0 minutes'
 }
 
+async function formatDateToLocaleString(date, timeType){
+    if(!date){ return null }
+
+    //start with year, month and day
+    let formatOptions = { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit' 
+    } 
+    
+    //add hours and minutes if needed
+    if(timeType == "long"){ 
+        formatOptions = { 
+            ...formatOptions, 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            hour12: true 
+        } 
+    }
+    return new Date(date).toLocaleString('en-GB', { ...formatOptions })
+}
+
+async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcommandGroup, loggingChannel, getFromDBFunction, removeFromDBFunction){
+    const entryIdArg = interaction.options.getString(subcommandIdArg)
+    let removeMultipleEntries = false
+    let entriesArrayMessage = ""
+    let invalidEntriesArrayMessage = ""
+    let foundEntriesArray = []
+    let embedMessage
+
+    let subcommandMessageContext
+    let subcommandMessageContextId
+    if(subcommandIdArg == "noteid"){ 
+        subcommandMessageContext = "Note"
+        subcommandMessageContextId = "noteId" 
+    }
+    else if(subcommandIdArg == "logid"){ 
+        subcommandMessageContext = "Log"
+        subcommandMessageContextId = "logId"
+    }
+    
+    //multi-note removal
+    if(entryIdArg.includes(",")){ 
+        removeMultipleEntries = true
+        const entryIdArray = entryIdArg.split(",")
+        const seenEntryIds = new Set()
+        const uniqueEntryIds = [...new Set(entryIdArray)]
+        let invalidEntriesArray = []
+        let embedMessageContent = `**Do you want to remove these ${subcommandMessageContext}s?**`
+        if(entryIdArray.includes("")){ await interaction.editReply(`Argument contains invalid number. Please provide only valid ${subcommandMessageContext} IDs.`); return }
+        
+        //map through all provided entries
+        await Promise.all(uniqueEntryIds.map(async (entryId) => {
+            let foundEntry = await getFromDBFunction(null, entryId)
+            if(!foundEntry){ //invalid entries
+                invalidEntriesArray.push(entryId)
+                invalidEntriesArrayMessage += `${entryId}, `
+                return 
+            }
+            //skip if duplicate
+            if(seenEntryIds.has(foundEntry)){ return }
+            
+            //valid entries
+            seenEntryIds.add(foundEntry[subcommandMessageContextId])
+            foundEntriesArray.push(foundEntry)
+            entriesArrayMessage += `${foundEntry[subcommandMessageContextId]}, `
+        }))
+        
+        //handle invalid notes
+        if(!foundEntriesArray[0]){ await interaction.editReply(`None of these ${subcommandMessageContext} IDs exist, please provide valid ${subcommandMessageContext} IDs to remove.`); return }
+        let foundNotesMessageContext = `this valid ${subcommandMessageContext}`
+        if(foundEntriesArray.length >= 2){ foundNotesMessageContext = `these valid ${subcommandMessageContext}s` }
+        
+        invalidEntriesArrayMessage = await formatEntriesArrayMessage(invalidEntriesArray, subcommandMessageContextId, invalidEntriesArrayMessage)
+        if(invalidEntriesArray[0]){
+            if(invalidEntriesArray.length >= 2){ embedMessageContent = `These ${subcommandMessageContext} IDs don't exist: ${invalidEntriesArrayMessage}.\n **Do you want to remove ${foundNotesMessageContext} instead?**` }
+            else{ embedMessageContent = `${subcommandMessageContext} ID ${invalidEntriesArrayMessage} does not exist.\n**Do you want to remove ${foundNotesMessageContext} instead?**` }
+        }
+        
+        //create paged embed, then edit embed to have yes/no buttons
+        await handlePageEmbed(interaction, foundEntriesArray, removeMultipleEntries, subcommandGroup)
+        entriesArrayMessage = await formatEntriesArrayMessage(foundEntriesArray, subcommandMessageContextId, entriesArrayMessage)
+        let newMessageComponents
+        if(currentComponents){ newMessageComponents = [...currentComponents, booleanActionRow] }
+        else{ newMessageComponents = [booleanActionRow] }
+        
+        embedMessage = await interaction.editReply({
+            content: embedMessageContent,
+            components: newMessageComponents
+        })
+    }
+
+    //check if singular note exists
+    else{
+        const foundEntry = await getFromDBFunction(null, entryIdArg)
+        if(!foundEntry){ interaction.editReply(`This ${subcommandMessageContext} ID does not exist.`); return }
+        const entryEmbed = await createUserNoteEmbed(foundEntry, "view")
+        embedMessage = await interaction.editReply({
+            content: `**Are you sure you want to remove this ${subcommandMessageContext}?**`,
+            embeds: [entryEmbed],
+            components: [booleanActionRow]
+        })
+    }
+    
+    //run button handler (collector)
+    const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+    const collector = embedMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
+    collector.on('collect', async i => {
+        if(!removeMultipleEntries){ await i.deferUpdate() }
+        if(i.customId === 'noButton'){
+            if(removeMultipleEntries){ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId}s ${entriesArrayMessage}.`, embeds: [], components: [] }) }
+            else{ await i.editReply({ content: `Cancelled removing ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [] }) }
+            return
+        }
+        else if(i.customId === 'yesButton'){
+            try{ 
+                if(removeMultipleEntries){
+                    handleMassDBEntryRemoval(interaction, embedMessage, loggingChannel, foundEntriesArray, removeFromDBFunction, subcommandMessageContextId)
+                    return
+                }
+                //remove singular note from database
+                else{
+                    const entryDeleted = await removeFromDBFunction(entryIdArg)
+                    if(entryDeleted){ 
+                        console.log(`Removed ${subcommandMessageContextId} ${entryIdArg} from database.`)
+                        await i.editReply({ content: `Successfully deleted ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [] })
+                        await loggingChannel.send({ content: `${interaction.user} deleted ${subcommandMessageContextId} ${entryIdArg}.` })
+                    }
+                }
+            }
+            catch(error){ 
+                console.error(error)
+                if(removeMultipleEntries){ await embedMessage.edit({ content: `There was an error deleting ${subcommandMessageContextId}s ${entriesArrayMessage}, please try again or contact the owner.`, embeds: [], components: [] }) }
+                else{ await i.editReply({ content: `There was an error deleting ${subcommandMessageContextId} ${entryIdArg}, please try again or contact the owner.`, embeds: [], components: [] }) }
+            }
+        }
+    })
+    //on collector timer's end
+    collector.on('end', async (collected) => {
+        if(collected.size === 0){ 
+            if(removeMultipleEntries){ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId}s ${entriesArrayMessage}.`, embeds: [], components: [] }) }
+            else{ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [] }) }
+        }
+        return
+    })
+}
+
 
 //export
 export default {
@@ -259,9 +447,32 @@ export default {
                 )
                 //view-all usernote subcommand
                 .addSubcommand(subcommand => 
-                subcommand
-                    .setName('view-all')
-                    .setDescription('View all notes in existence ever.')
+                    subcommand
+                        .setName('view-all')
+                        .setDescription('View all notes in existence ever.')
+                )
+        )
+        //TODO: logs subcommand group
+        .addSubcommandGroup(group =>
+            group
+                .setName('logs')
+                .setDescription('Remove/View categorized Server Logs.')
+                //remove logs subcommand
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('remove')
+                        .setDescription("Remove one or more logs, using log ID(s).")
+                        .addStringOption(option =>
+                            option
+                                .setName('logid')
+                                .setDescription("Log ID(s) to remove (multiple = seperated by comma).")
+                                .setRequired(true))
+                )
+                //view-all logs subcommand
+                .addSubcommand(subcommand => 
+                    subcommand
+                        .setName('view-all')
+                        .setDescription('View all logs in existence ever.')
                 )
         )
         //TODO: group-user subcommand
@@ -371,117 +582,7 @@ export default {
             }
             //usernote remove subcommand
             if(subcommand === "remove"){
-                const noteIdArg = interaction.options.getString("noteid")
-                let removeMultipleNotes = false
-                let notesArrayMessage = ""
-                let invalidNotesArrayMessage = ""
-                let foundNotesArray = []
-                let embedMessage
-                
-                //multi-note removal
-                if(noteIdArg.includes(",")){ 
-                    removeMultipleNotes = true
-                    const noteIdArray = noteIdArg.split(",")
-                    const seenNoteIds = new Set()
-                    const uniqueNoteIds = [...new Set(noteIdArray)]
-                    let invalidNotesArray = []
-                    let embedMessageContent = `**Do you want to remove these Notes?**`
-                    if(noteIdArray.includes("")){ await interaction.editReply("Argument contains invalid number. Please provide only valid Note IDs."); return }
-                    
-                    //map through all provided notes
-                    await Promise.all(uniqueNoteIds.map(async (noteId) => {
-                        let foundUserNote = await getUserNoteInDB(null, noteId)
-                        if(!foundUserNote){ //invalid notes
-                            invalidNotesArray.push(noteId)
-                            invalidNotesArrayMessage += `${noteId}, `
-                            return 
-                        }
-                        //skip if duplicate
-                        if(seenNoteIds.has(foundUserNote)){ return }
-                        
-                        //valid notes
-                        seenNoteIds.add(foundUserNote.noteId)
-                        foundNotesArray.push(foundUserNote)
-                        notesArrayMessage += `${foundUserNote.noteId}, `
-                    }))
-                    
-                    //handle invalid notes
-                    if(!foundNotesArray[0]){ await interaction.editReply("None of these Note IDs exist, please provide valid Note IDs to remove."); return }
-                    let foundNotesMessageContext = "this valid Note"
-                    if(foundNotesArray.length >= 2){ foundNotesMessageContext = "these valid Notes" }
-
-                    invalidNotesArrayMessage = await formatNotesArrayMessage(invalidNotesArray, invalidNotesArrayMessage)
-                    if(invalidNotesArray[0]){
-                        if(invalidNotesArray.length >= 2){ embedMessageContent = `These Note IDs don't exist: ${invalidNotesArrayMessage}.\n **Do you want to remove ${foundNotesMessageContext} instead?**` }
-                        else{ embedMessageContent = `Note ID ${invalidNotesArrayMessage} does not exist.\n**Do you want to remove ${foundNotesMessageContext} instead?**` }
-                    }
-                    
-                    //create paged embed, then edit embed to have yes/no buttons
-                    await handlePageEmbed(interaction, foundNotesArray, removeMultipleNotes)
-                    notesArrayMessage = await formatNotesArrayMessage(foundNotesArray, notesArrayMessage)
-                    let newMessageComponents
-                    if(currentComponents){ newMessageComponents = [...currentComponents, booleanActionRow] }
-                    else{ newMessageComponents = [booleanActionRow] }
-
-                    embedMessage = await interaction.editReply({
-                        content: embedMessageContent,
-                        components: newMessageComponents
-                    })
-                }
-
-                //check if singular note exists
-                else{
-                    const foundUserNote = await getUserNoteInDB(null, noteIdArg)
-                    if(!foundUserNote){ interaction.editReply("This Note ID does not exist."); return }
-                    const userNoteEmbed = await createUserNoteEmbed(foundUserNote, "view")
-                    embedMessage = await interaction.editReply({
-                        content: "**Are you sure you want to remove this Note?**",
-                        embeds: [userNoteEmbed],
-                        components: [booleanActionRow]
-                    })
-                }
-
-                //run button handler (collector)
-                const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
-                const collector = embedMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
-                collector.on('collect', async i => {
-                    if(!removeMultipleNotes){ await i.deferUpdate() }
-                    if(i.customId === 'noButton'){
-                        if(removeMultipleNotes){ await embedMessage.edit({ content: `Cancelled removing noteIds ${notesArrayMessage}.`, embeds: [], components: [] }) }
-                        else{ await i.editReply({ content: `Cancelled removing noteId ${noteIdArg}.`, embeds: [], components: [] }) }
-                        return
-                    }
-                    else if(i.customId === 'yesButton'){
-                        try{ 
-                            if(removeMultipleNotes){
-                                handleMassNoteRemoval(embedMessage, loggingChannel, foundNotesArray)
-                                return
-                            }
-                            //remove singular note from database
-                            else{
-                                const noteDeleted = await removeUserNoteInDB(noteIdArg)
-                                if(noteDeleted){ 
-                                    console.log(`Removed noteId ${noteIdArg} from database.`)
-                                    await i.editReply({ content: `Successfully deleted noteId ${noteIdArg}.`, embeds: [], components: [] })
-                                    await loggingChannel.send({ content: `${interaction.user} deleted noteId ${noteIdArg}.` })
-                                }
-                            }
-                        }
-                        catch(error){ 
-                            console.error(error)
-                            if(removeMultipleNotes){ await embedMessage.edit({ content: `There was an error deleting noteIds ${notesArrayMessage}, please try again or contact the owner.`, embeds: [], components: [] }) }
-                            else{ await i.editReply({ content: `There was an error deleting noteId ${noteIdArg}, please try again or contact the owner.`, embeds: [], components: [] }) }
-                        }
-                    }
-                })
-                //on collector timer's end
-                collector.on('end', async (collected) => {
-                    if(collected.size === 0){ 
-                        if(removeMultipleNotes){ await embedMessage.edit({ content: `Cancelled removing noteIds ${notesArrayMessage}.`, embeds: [], components: [] }) }
-                        else{ await embedMessage.edit({ content: `Cancelled removing noteId ${noteIdArg}.`, embeds: [], components: [] }) }
-                    }
-                    return
-                })
+                handleSubcommandDBRemoval(interaction, "noteid", "userNote", loggingChannel, getUserNoteInDB, removeUserNoteInDB)
             }
             //usernote view subcommand
             if(subcommand === "view"){
@@ -504,7 +605,7 @@ export default {
                 else if(userArg){
                     let allUserNotes = await getUserNoteInDB(userArg.id, null)
                     if(!allUserNotes){ await interaction.editReply("This User has no notes."); return }
-                    await handlePageEmbed(interaction, allUserNotes, false)
+                    await handlePageEmbed(interaction, allUserNotes, false, "userNote")
                 }
 
                 //no arguments given
@@ -515,7 +616,22 @@ export default {
                 let allUserNotesInDb = await getAllUserNotesInDB()
                 if(!allUserNotesInDb[0]){ await interaction.editReply('There are no notes currently stored. To store a note on a User, use the `/mod usernote add @ping "noteHere"` command.'); return }
                 await interaction.editReply("This might take a while, please be patient, and do not run the command again until this message changes.")
-                await handlePageEmbed(interaction, allUserNotesInDb, false)
+                await handlePageEmbed(interaction, allUserNotesInDb, false, "userNote")
+            }
+        }
+
+        //TODO: logs subcommandGroup
+        if(subcommandGroup === "logs"){
+            //logs remove subcommand
+            if(subcommand === "remove"){
+                handleSubcommandDBRemoval(interaction, "logid", "serverLog", loggingChannel, getServerLogInDB, removeServerLogInDB)
+            }
+            //logs view-all subcommand
+            if(subcommand === "view-all"){
+                let allServerLogsInDb = await getAllServerLogsInDB()
+                if(!allServerLogsInDb[0]){ await interaction.editReply('There are no server logs currently stored. Logs will be made when a server event is triggered (eg. user joins server).'); return }
+                await interaction.editReply("This might take a while, please be patient, and do not run the command again until this message changes.")
+                await handlePageEmbed(interaction, allServerLogsInDb, false, "serverLog-all")
             }
         }
 

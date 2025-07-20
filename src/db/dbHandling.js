@@ -1,24 +1,25 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { eq } from 'drizzle-orm'
-import { usersTable, userNotesTable } from './schema.js'
+import { vrcUsersTable, userNotesTable, serverLogsTable } from './schema.js'
 
 const db = drizzle(process.env.DATABASE_URL)
 
 
+//vrchat user handling
 export async function getUserInDB(discordUserId, vrcUserId){
     if(discordUserId != null){
         let discordUser = await db
             .select()
-            .from(usersTable)
-            .where(eq(usersTable.discordUserId, discordUserId))
+            .from(vrcUsersTable)
+            .where(eq(vrcUsersTable.discordUserId, discordUserId))
             .limit(1)
         if(discordUser.length > 0){ return discordUser[0] }
     }
     else if(vrcUserId != null){
         let vrcUser = await db
             .select()
-            .from(usersTable)
-            .where(eq(usersTable.vrcUserId, vrcUserId))
+            .from(vrcUsersTable)
+            .where(eq(vrcUsersTable.vrcUserId, vrcUserId))
             .limit(1)
         if(vrcUser.length > 0){ return vrcUser[0] }
     }
@@ -31,8 +32,8 @@ export async function removeUserInDB(discordUserId, vrcUserId){
         let discordUser = getUserInDB(discordUserId, null)
         if(discordUser){
             await db
-                .delete(usersTable)
-                .where(eq(usersTable.discordUserId, discordUserId))
+                .delete(vrcUsersTable)
+                .where(eq(vrcUsersTable.discordUserId, discordUserId))
             return true
         }
     }
@@ -40,8 +41,8 @@ export async function removeUserInDB(discordUserId, vrcUserId){
         let vrcUser = getUserInDB(null, vrcUserId)
         if(vrcUser){
             await db
-                .delete(usersTable)
-                .where(eq(usersTable.vrcUserId, vrcUserId))
+                .delete(vrcUsersTable)
+                .where(eq(vrcUsersTable.vrcUserId, vrcUserId))
             return true
         }
     }
@@ -60,7 +61,7 @@ export async function createUserInDB(discordUserId, discordUsername, userVRCData
 
     //insert new user with data, and return
     const newUser = await db
-        .insert(usersTable)
+        .insert(vrcUsersTable)
         .values({
             discordUserId,
             discordUsername,
@@ -72,6 +73,7 @@ export async function createUserInDB(discordUserId, discordUsername, userVRCData
 }
 
 
+//user note handling
 export async function getUserNoteInDB(discordUserId, noteId){
     if(discordUserId != null){
         let discordUserNotes = await db
@@ -129,4 +131,61 @@ export async function createUserNoteInDB(discordUserId, discordUsername, userNot
         })
         .returning()
     return newUser[0]
+}
+
+
+//server logs handling
+export async function getAllServerLogsInDB(){
+    let allLogs = await db
+        .select()
+        .from(serverLogsTable)
+    return allLogs
+}
+
+export async function getServerLogInDB(discordUserId, logId){
+    if(discordUserId != null){
+        let discordUserLogs = await db
+            .select()
+            .from(serverLogsTable)
+            .where(eq(serverLogsTable.discordUserId, discordUserId))
+        if(discordUserLogs.length > 0){ return discordUserLogs } //return all logs
+    }
+    else if(logId != null){
+        let serverLog = await db
+            .select()
+            .from(serverLogsTable)
+            .where(eq(serverLogsTable.logId, logId))
+            .limit(1)
+        if(serverLog.length > 0){ return serverLog[0] } //return one note matching logId
+    }
+    //neither user or note exists
+    return null
+}
+
+export async function removeServerLogInDB(logId){
+    if(logId != null){
+        let serverLog = getServerLogInDB(null, logId)
+        if(serverLog){
+            await db
+                .delete(serverLogsTable)
+                .where(eq(serverLogsTable.logId, logId))
+            return true
+        }
+    }
+    //log wasn't removed
+    return false
+}
+
+export async function createServerLogInDB(discordUserId, affectedDiscordUserId, eventType, details){
+    //insert new log with data, and return
+    const newLog = await db
+        .insert(serverLogsTable)
+        .values({
+            discordUserId,
+            affectedDiscordUserId,
+            eventType,
+            details: JSON.stringify(details) //extra data object
+        })
+        .returning()
+    return newLog[0]
 }
