@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, like } from 'drizzle-orm'
 import { vrcUsersTable, userNotesTable, serverLogsTable } from './schema.js'
 
 const db = drizzle(process.env.DATABASE_URL)
@@ -135,31 +135,45 @@ export async function createUserNoteInDB(discordUserId, discordUsername, userNot
 
 
 //server logs handling
-export async function getAllServerLogsInDB(){
-    let allLogs = await db
-        .select()
-        .from(serverLogsTable)
-    return allLogs
-}
+export async function getServerLogInDB(discordUserId, logId, affectedDiscordUserId, eventType, details){
+    const allowedDetailKeys = ["accountCreatedAt", "timeoutLength", "reason"]
+    let whereConditions = []
 
-export async function getServerLogInDB(discordUserId, logId){
-    if(discordUserId != null){
-        let discordUserLogs = await db
-            .select()
-            .from(serverLogsTable)
-            .where(eq(serverLogsTable.discordUserId, discordUserId))
-        if(discordUserLogs.length > 0){ return discordUserLogs } //return all logs
-    }
-    else if(logId != null){
+    if(logId != null){
         let serverLog = await db
             .select()
             .from(serverLogsTable)
             .where(eq(serverLogsTable.logId, logId))
             .limit(1)
-        if(serverLog.length > 0){ return serverLog[0] } //return one note matching logId
+        return serverLog.length > 0 ? serverLog[0] : null //return one note matching logId
     }
-    //neither user or note exists
-    return null
+
+    if(discordUserId != null){ whereConditions.push(eq(serverLogsTable.discordUserId, discordUserId)) }
+    if(affectedDiscordUserId != null){ whereConditions.push(eq(serverLogsTable.affectedDiscordUserId, affectedDiscordUserId)) }
+    if(eventType != null){ whereConditions.push(eq(serverLogsTable.eventType, eventType)) }
+    if (details != null && typeof details === 'object') {
+        for (const [key, value] of Object.entries(details)) {
+            if (value != null && allowedDetailKeys.includes(key)) {
+                whereConditions.push(sql`${serverLogsTable.details}->>'${key}' = ${value}`)
+            }
+        }
+    }
+
+    const finalCondition = whereConditions.length === 1 ? whereConditions[0] : and(...whereConditions)
+    const serverLogs = await db
+        .select()
+        .from(serverLogsTable)
+        .where(finalCondition)
+        .orderBy(desc(serverLogsTable.createdAt))
+        .limit(1)
+    return serverLogs.length > 0 ? serverLogs[0] : null
+}
+
+export async function getAllServerLogsInDB(){
+    let allLogs = await db
+        .select()
+        .from(serverLogsTable)
+    return allLogs
 }
 
 export async function removeServerLogInDB(logId){

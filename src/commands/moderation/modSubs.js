@@ -1,6 +1,8 @@
 //imports
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
-import { createUserNoteInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
+import { ActionRowBuilder, AuditLogEvent, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
+import { createServerLogInDB, createUserNoteInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
+import LogEventTypes from '../../misc/logEventTypes.js'
+import { serverLogLogger } from '../../misc/serverLogLogger.js'
 
 let currentComponents
 const yesButton = new ButtonBuilder()
@@ -31,7 +33,7 @@ async function createUserNoteEmbed(userNoteData, userNoteOption, userNoteIndex, 
     return userNoteEmbed
 }
 
-async function createServerLogEmbed(interaction, serverLogData, serverLogOption, serverLogIndex, serverLogLength){
+export async function createServerLogEmbed(interaction, serverLogData, serverLogOption, serverLogIndex, serverLogLength){
     let handledServerLog = ""
     let serverLogPlacement = ""
 
@@ -44,25 +46,34 @@ async function createServerLogEmbed(interaction, serverLogData, serverLogOption,
     let affectedGuildMember = serverLogData.affectedDiscordUserId
     if(affectedGuildMember){ 
         try{ affectedGuildMember = await interaction.guild.members.fetch(serverLogData.affectedDiscordUserId) }
-        catch{ affectedGuildMember = null }
+        catch{ 
+            const exemptedTypes = ["MEMBER_KICK", "MEMBER_BAN", "MEMBER_UNBAN", "MEMBER_TIMEOUT_ADD", "MEMBER_TIMEOUT_REMOVE"] //set to null if eventType isn't one of these
+            if(!exemptedTypes.includes(serverLogData.eventType)){ affectedGuildMember = null }
+        }
     }
 
-    if(serverLogOption == "view"){ handledServerLog = `Server Log for: ${guildMember.displayName}` }
+    if(serverLogOption == "view"){ handledServerLog = `Server Log` }
     if(serverLogOption == "view-all"){ handledServerLog = "All Server Logs" }
     if(serverLogIndex && serverLogLength > 1){ serverLogPlacement = `${serverLogIndex}/${serverLogLength}` }
 
     let accountCreatedAtDate = await formatDateToLocaleString(serverLogData.details.accountCreatedAt)
     const footerCreatedAtDate = await formatDateToLocaleString(serverLogData.createdAt, "long")
+    const timeoutLength = serverLogData.details.timeoutLength
+    const timeoutRemaining = serverLogData.details.timeoutRemaining
+    const logReason = serverLogData.details.reason
     
     const serverLogEmbed = new EmbedBuilder()
         .setColor('Greyple')
-        .setTitle(handledServerLog)
+        .setTitle(`${handledServerLog} ${serverLogPlacement}`)
         .addFields(
-            { name: `Server Log ${serverLogPlacement}`, value: `` },
+            // { name: `Server Log ${serverLogPlacement}`, value: `` },
             { name: `Event Type`, value: `${serverLogData.eventType}`, inline: true },
             { name: `User`, value: `${guildMember}`, inline: true },
             ...(affectedGuildMember ? [{ name: `Affected User`, value: `${affectedGuildMember}`, inline: true }] : []),
-            ...(accountCreatedAtDate ? [{ name: `Account Created`, value: `${accountCreatedAtDate}`, inline: true }] : [])
+            ...(accountCreatedAtDate ? [{ name: `Account Created`, value: `${accountCreatedAtDate}`, inline: true }] : []),
+            ...(timeoutLength ? [{ name: `Timeout Length`, value: `${timeoutLength}`, inline: true }] : []),
+            ...(timeoutRemaining ? [{ name: `Timeout Remaining`, value: `${timeoutRemaining}`, inline: true }] : []),
+            ...(logReason ? [{ name: `Reason`, value: `${logReason}`, inline: true }] : [])
         )
         .setFooter({ text: `LogID: ${serverLogData.logId}  •  ${footerCreatedAtDate}` })
     return serverLogEmbed
@@ -266,6 +277,24 @@ async function formatDateToLocaleString(date, timeType){
         } 
     }
     return new Date(date).toLocaleString('en-GB', { ...formatOptions })
+}
+
+async function validateFutureTimestamp(isoString){
+    const targetTime = new Date(isoString)
+    const now = new Date()
+
+    return targetTime > now ? targetTime : null
+}
+
+async function getTimeRemainingString(targetIsoString) {
+    const target = new Date(targetIsoString)
+    const now = new Date()
+    const diffMs = target - now
+
+    if(diffMs <= 0){ return null }
+
+    const minutesRemaining = Math.floor(diffMs / 1000 / 60)
+    return `${minutesRemaining} minutes${await convertMinutesToString(minutesRemaining)}`
 }
 
 async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcommandGroup, loggingChannel, getFromDBFunction, removeFromDBFunction){
@@ -661,10 +690,10 @@ export default {
             
             if(confirmationResult === true){ 
                 try{ 
-                    if(subcommand === "ban"){ await interaction.guild.members.ban(userArg, {reason: reasonArg}) }
-                    else if(subcommand === "kick"){ await interaction.guild.members.kick(userArg, {reason: reasonArg}) }
+                    const guildMemberToRemove = await interaction.guild.members.fetch(userArg.id).catch(() => null)
+                    if(subcommand === "ban"){ await interaction.guild.members.ban(userArg, {reason: `${interaction.user.id} | ${reasonArg}`}) }
+                    else if(subcommand === "kick"){ guildMemberToRemove.kick(`${interaction.user.id} | ${reasonArg}`) }
                     await interaction.editReply(`Successfully ${messageContext2} ${userArg} for "${reasonArg}".`) 
-                    await loggingChannel.send({ content: `${interaction.user} ${messageContext2} ${userArg} for "${reasonArg}".` })
                     return
                 }
                 catch(error){
@@ -692,14 +721,23 @@ export default {
             if(!bannedUser){ interaction.editReply("Please provide a valid User to unban."); return }
 
             const userToUnban = bannedUser.user
-            const confirmationMessage = await interaction.editReply({ content: `Do you want to unban ${userToUnban}? \nUser was previous banned for "${bannedUser.reason}"`, components: [booleanActionRow] })
+            const [userId, ...rest] = (bannedUser.reason).split(' | ')
+            let newBanReason = rest.join(' | ')
+            if(!newBanReason){    
+                //check latest ban that happened to this user
+                //NOTE: this may need a limit, or may not find ban in audit log if its too far back
+                const auditLog = await interaction.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd })
+                const banLog = auditLog.entries.find(log => log.target.id === userArg)
+                newBanReason = banLog.reason
+            }
+
+            const confirmationMessage = await interaction.editReply({ content: `Do you want to unban ${userToUnban}? \nUser was previous banned for "${newBanReason}"`, components: [booleanActionRow] })
             const confirmationResult = await handleConfirmationMessage(confirmationMessage, userToUnban, "unban")
 
             if(confirmationResult === true){
                 try{
                     await interaction.guild.members.unban(userToUnban)
                     await interaction.editReply(`Unbanned ${userToUnban}.`)
-                    await loggingChannel.send({ content: `${interaction.user} unbanned ${userToUnban}.` })
                     return
                 }
                 catch(error){
@@ -731,7 +769,14 @@ export default {
                     const guildMember = await interaction.guild.members.cache.get(userArg.id)
                     await guildMember.timeout(timeoutLength)
                     await interaction.editReply(`Successfully timed ${userArg} out for ${lengthArg} minutes${convertedTime}for "${reasonArg}".`) 
-                    await loggingChannel.send({ content: `${interaction.user} timed out ${userArg} for ${lengthArg} minutes for "${reasonArg}".` })
+                    
+                    //add server log to db, and send copy of log to logging channel
+                    const newLog = await createServerLogInDB(interaction.user.id, userArg.id, LogEventTypes.MEMBER_TIMEOUT_ADD, {
+                        //details object
+                        timeoutLength: `${lengthArg} minutes${convertedTime}`,
+                        reason: reasonArg
+                    })
+                    await serverLogLogger(interaction, newLog)
                     return
                 }
                 catch(error){
@@ -744,24 +789,33 @@ export default {
             }
         }
         //untimeout subcommand
-        //TODO: add reason for timeout (fetch from database logging system)
         if(subcommand === "untimeout"){
             const userArg = interaction.options.getUser('user')
             const guildMember = await interaction.guild.members.cache.get(userArg.id)
             const timeoutEnd = await guildMember.communicationDisabledUntil
-
+            const convertedTimeoutEnd = await validateFutureTimestamp(timeoutEnd)
+            
             if(!userArg){ interaction.editReply("Please provide a valid User to remove timeout from."); return }
-            if(!timeoutEnd){ interaction.editReply('User is not currently timed out. \nTo timeout a User, use the "/mod timeout" slashcommand.'); return }
-        
-            //TODO: add reason for timeout
-            const confirmationMessage = await interaction.editReply({ content: `${userArg}'s timeout ends ${time(timeoutEnd, TimestampStyles.RelativeTime)}. \nThey were timed out for "%REASON_HERE%". \nDo you want to remove their timeout?`, components: [booleanActionRow] })
+            if(!convertedTimeoutEnd){ interaction.editReply('User is not currently timed out. \nTo timeout a User, use the "/mod timeout" slashcommand.'); return }
+            
+            const timeoutServerLog = await getServerLogInDB(null, null, userArg.id, "MEMBER_TIMEOUT_ADD")
+            const timeoutReason = timeoutServerLog.details.reason
+            const timeoutRemaining = await getTimeRemainingString(timeoutEnd)
+            
+            const confirmationMessage = await interaction.editReply({ content: `${userArg}'s timeout ends ${time(timeoutEnd, TimestampStyles.RelativeTime)}. \nThey were timed out for "${timeoutReason}". \nDo you want to remove their timeout?`, components: [booleanActionRow] })
             const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, "untimeout")
         
             if(confirmationResult === true){
                 try{
                     await guildMember.timeout(null)
                     await interaction.editReply(`Removed timeout from ${userArg}.`)
-                    await loggingChannel.send({ content: `${interaction.user} removed timeout from ${userArg}. \nThey were previously timed out for "%REASON_HERE%".` })
+                    const newLog = await createServerLogInDB(interaction.user.id, userArg.id, LogEventTypes.MEMBER_TIMEOUT_REMOVE, {
+                        //details object
+                        timeoutRemaining: timeoutRemaining,
+                        reason: timeoutReason
+                    })
+                    await serverLogLogger(interaction, newLog)
+                    await loggingChannel.send({ content: `${interaction.user} removed timeout from ${userArg}. \nThey were previously timed out for "${timeoutReason}".` })
                     return
                 }
                 catch(error){

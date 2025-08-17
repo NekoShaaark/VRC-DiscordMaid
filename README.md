@@ -4,9 +4,14 @@
 - [ ] Make logs of activities in the Server.
 - [ ] Retrieve all logs of a specific User _(messages or actions that User did)_.
 - [ ] Archive old logs every x months, then delete those "archived" logs after x months _(can "unarchive" and view logs if wanted)_.
-- [ ] Keep track of changes within' the Server _(could be stored in the database, or on a Server channel)_ including: 
-   - [ ] Member joins/leaves/is kicked/is banned.
-   - [ ] Role change of a member (removing/adding).
+- [ ] Keep track of changes within' the Server _(stored in database, and copy of log on a Server channel)_ including: 
+   - [x] Member joins/leaves/is kicked/is banned/is unbanned.
+   - [x] Member has timeout applied or removed (and who applied/removed it, with how much time was applied/how much was left when it was removed).
+   - [ ] Role change of a member (adding/removing, and who did it).
+   - [ ] Message is edited/deleted (with edited/deleted content). <= might not need this
+   - [ ] Invite is created/deleted (and who created/deleted it).
+   - [ ] VRChat profile is linked/unlinked (and who linked/unlinked the profile, including if a moderator unlinked it, with a reason).
+   - [ ] User Note is created/deleted (and who created/deleted it). <= might not need this
 
 ## VRChat
 - [x] Display any VRChat user's profile.
