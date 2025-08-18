@@ -1,8 +1,7 @@
 # Maid Project Plans:
 
 ## Logging
-- [ ] Make logs of activities in the Server.
-- [ ] Retrieve all logs of a specific User _(messages or actions that User did)_.
+- [x] Fetch/filter all logs of a specific User/Affected User/Event Type/Details _(messages or actions that User did)_.
 - [ ] Archive old logs every x months, then delete those "archived" logs after x months _(can "unarchive" and view logs if wanted)_.
 - [ ] Keep track of changes within' the Server _(stored in database, and copy of log on a Server channel)_ including: 
    - [x] Member joins/leaves/is kicked/is banned/is unbanned.

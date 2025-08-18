@@ -472,7 +472,7 @@ export default {
                         .addStringOption(option => 
                             option
                                 .setName('noteid')
-                                .setDescription('Note ID to view (optional).'))
+                                .setDescription('Note ID to view (overrides user filter).'))
                 )
                 //view-all usernote subcommand
                 .addSubcommand(subcommand => 
@@ -482,6 +482,7 @@ export default {
                 )
         )
         //TODO: logs subcommand group
+        //STUB: maybe only the owner/admins can remove logs
         .addSubcommandGroup(group =>
             group
                 .setName('logs')
@@ -496,6 +497,56 @@ export default {
                                 .setName('logid')
                                 .setDescription("Log ID(s) to remove (multiple = seperated by comma).")
                                 .setRequired(true))
+                )
+                //view logs subcommand
+                .addSubcommand(subcommand => 
+                    subcommand
+                        .setName('view')
+                        .setDescription('View filtered Server Logs using filters.')
+                        .addUserOption(option =>
+                            option
+                                .setName('user')
+                                .setDescription('User that used the command, or self if no other User was affected (optional).'))
+                        .addUserOption(option =>
+                            option
+                                .setName('affecteduser')
+                                .setDescription('User Affected by the command (optional).'))
+                        .addStringOption(option =>
+                            option
+                                .setName('eventtype')
+                                .setDescription('Type of Event to view Logs of (optional).')
+                                .addChoices(
+                                    { name: 'Member Join', value: LogEventTypes.MEMBER_JOIN },
+                                    { name: 'Member Leave', value: LogEventTypes.MEMBER_LEAVE },
+                                    { name: 'Member Kick', value: LogEventTypes.MEMBER_KICK },
+                                    { name: 'Member Ban', value: LogEventTypes.MEMBER_BAN },
+                                    { name: 'Timeout Add', value: LogEventTypes.MEMBER_TIMEOUT_ADD },
+                                    { name: 'Timeout Remove', value: LogEventTypes.MEMBER_TIMEOUT_REMOVE },
+                                ))
+                        .addStringOption(option =>
+                            option
+                                .setName('detail')
+                                .setDescription('Filter Logs by specific detail (optional).')
+                                .addChoices(
+                                    { name: 'Account Created At', value: 'accountCreatedAt' },
+                                    { name: 'Timeout Length', value: 'timeoutLength' },
+                                    { name: 'Reason', value: 'reason' }
+                                ))
+                        .addStringOption(option =>
+                            option
+                                .setName('detailvalue')
+                                .setDescription('Value for the chosen detail filter (optional, only use if "detail" is selected).')
+                        )
+                        .addIntegerOption(option =>
+                            option
+                                .setName('limit')
+                                .setDescription('How many Logs to fetch (default 25).')
+                                .setMinValue(1)
+                                .setMaxValue(200))
+                        .addStringOption(option =>
+                            option
+                                .setName('logid')
+                                .setDescription('Log ID to view (overrides other filters).'))
                 )
                 //view-all logs subcommand
                 .addSubcommand(subcommand => 
@@ -655,6 +706,53 @@ export default {
             if(subcommand === "remove"){
                 handleSubcommandDBRemoval(interaction, "logid", "serverLog", loggingChannel, getServerLogInDB, removeServerLogInDB)
             }
+            //logs view subcommand
+            if(subcommand === "view"){
+                const logIdArg = interaction.options.getString("logid")
+                const detailArg = interaction.options.getString("detail")
+                const detailValueArg = interaction.options.getString("detailvalue")
+                const eventTypeArg = interaction.options.getString("eventtype")
+                const affectedUserArg = interaction.options.getUser("affecteduser")
+                const userArg = interaction.options.getUser("user")
+                const limitArg = interaction.options.getInteger("limit") || 25
+
+                //logId is more weighted, as it only displays one server log
+                if(logIdArg){ 
+                    let foundServerLog = await getServerLogInDB(null, logIdArg)
+                    if(!foundServerLog){ await interaction.editReply("This Server Log ID does not exist."); return }
+                    
+                    //send server log embed
+                    let serverLogEmbed = await createServerLogEmbed(interaction, foundServerLog, "view")
+                    await interaction.editReply({ content: "", embeds: [serverLogEmbed] }) //flags: MessageFlags.Ephemeral 
+                    return
+                }
+
+                //if nothing is selected, return
+                if(!detailArg && !detailValueArg && !eventTypeArg && !affectedUserArg && !userArg){
+                    await interaction.editReply("Please provide at least one filter (User, Affected User, Event Type, or Detail) to view filtered Logs.")
+                    return
+                }
+
+                //otherwise, get all of the categorized server logs, and display them in a paginated embed
+                let details = null
+                if(detailArg && detailValueArg){ details = { [detailArg]: detailValueArg } }
+                
+                const allFoundLogs = await getServerLogInDB(
+                    userArg?.id || null,
+                    null,
+                    affectedUserArg?.id || null,
+                    eventTypeArg || null,
+                    details,
+                    limitArg
+                )
+                if(!allFoundLogs || allFoundLogs.length === 0){
+                    await interaction.editReply("No matching logs were found.")
+                    return
+                }
+                
+                await interaction.editReply("Fetching filtered Logs, this might take a while. Please be patient, and do not run the command again until this message changes.")
+                await handlePageEmbed(interaction, allFoundLogs, false, "serverLog")
+            }
             //logs view-all subcommand
             if(subcommand === "view-all"){
                 let allServerLogsInDb = await getAllServerLogsInDB()
@@ -680,7 +778,7 @@ export default {
             const userArg = interaction.options.getUser("user")
             const reasonArg = interaction.options.getString("reason")
 
-            if(userArg === process.env.CLIENT_ID){ interaction.editReply(`You can't ${subcommand} me using myself, silly...`); return }
+            if(userArg.id === process.env.CLIENT_ID){ interaction.editReply(`You can't ${subcommand} me using myself, silly...`); return }
             if(userArg === interaction.user){ interaction.editReply(`You can't ${subcommand} yourself, silly~`); return}
             if(!userArg){ interaction.editReply(`Please provide a valid User to ${subcommand}.`); return }
             if(!reasonArg){ interaction.editReply(`Please provide a reason for ${messageContext1} this User.`); return }
@@ -752,7 +850,7 @@ export default {
             const lengthArg = interaction.options.getNumber("minutes")
             const reasonArg = interaction.options.getString("reason")
             
-            if(userArg === process.env.CLIENT_ID){ interaction.editReply("You can't time me out using myself, silly..."); return }
+            if(userArg.id === process.env.CLIENT_ID){ interaction.editReply("You can't time me out using myself, silly..."); return }
             if(userArg === interaction.user){ interaction.editReply("You can't time yourself out, silly~"); return}
             if(!userArg){ interaction.editReply("Please provide a valid User to timeout."); return }
             if(!reasonArg){ interaction.editReply("Please provide a reason for timing this User out."); return }
@@ -798,7 +896,8 @@ export default {
             if(!userArg){ interaction.editReply("Please provide a valid User to remove timeout from."); return }
             if(!convertedTimeoutEnd){ interaction.editReply('User is not currently timed out. \nTo timeout a User, use the "/mod timeout" slashcommand.'); return }
             
-            const timeoutServerLog = await getServerLogInDB(null, null, userArg.id, "MEMBER_TIMEOUT_ADD")
+            let timeoutServerLog = await getServerLogInDB(null, null, userArg.id, "MEMBER_TIMEOUT_ADD")
+            timeoutServerLog = timeoutServerLog[timeoutServerLog.length - 1]
             const timeoutReason = timeoutServerLog.details.reason
             const timeoutRemaining = await getTimeRemainingString(timeoutEnd)
             
@@ -815,7 +914,6 @@ export default {
                         reason: timeoutReason
                     })
                     await serverLogLogger(interaction, newLog)
-                    await loggingChannel.send({ content: `${interaction.user} removed timeout from ${userArg}. \nThey were previously timed out for "${timeoutReason}".` })
                     return
                 }
                 catch(error){

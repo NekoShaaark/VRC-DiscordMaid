@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { and, desc, eq, like } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { vrcUsersTable, userNotesTable, serverLogsTable } from './schema.js'
 
 const db = drizzle(process.env.DATABASE_URL)
@@ -135,8 +135,12 @@ export async function createUserNoteInDB(discordUserId, discordUsername, userNot
 
 
 //server logs handling
-export async function getServerLogInDB(discordUserId, logId, affectedDiscordUserId, eventType, details){
-    const allowedDetailKeys = ["accountCreatedAt", "timeoutLength", "reason"]
+export async function getServerLogInDB(discordUserId, logId, affectedDiscordUserId, eventType, details, limit){
+    const allowedDetailKeys = {
+        reason: 'string',
+        timeoutLength: 'number',
+        accountCreatedAt: 'string'
+    }
     let whereConditions = []
 
     if(logId != null){
@@ -151,22 +155,35 @@ export async function getServerLogInDB(discordUserId, logId, affectedDiscordUser
     if(discordUserId != null){ whereConditions.push(eq(serverLogsTable.discordUserId, discordUserId)) }
     if(affectedDiscordUserId != null){ whereConditions.push(eq(serverLogsTable.affectedDiscordUserId, affectedDiscordUserId)) }
     if(eventType != null){ whereConditions.push(eq(serverLogsTable.eventType, eventType)) }
-    if (details != null && typeof details === 'object') {
-        for (const [key, value] of Object.entries(details)) {
-            if (value != null && allowedDetailKeys.includes(key)) {
-                whereConditions.push(sql`${serverLogsTable.details}->>'${key}' = ${value}`)
+    if(details && typeof details === 'object'){
+        for(const [key, rawVal] of Object.entries(details)){
+            if(!(key in allowedDetailKeys)){ continue }
+            
+            const keySql = sql.raw(`'${key}'`) //safe because of allowlist
+            const type = allowedDetailKeys[key]
+            
+            if(type === 'number'){
+                const num = Number(rawVal)
+                if(!Number.isFinite(num)){ continue }
+                //compare as numeric: (details->>'timeoutLength')::numeric = $1
+                whereConditions.push(sql`(${serverLogsTable.details}->>${keySql}) ILIKE ${'%' + val + '%'}`)
+            } 
+            else{
+              //compare as case-insensitive string
+              const val = String(rawVal)
+              whereConditions.push(sql`lower(${serverLogsTable.details}->>${keySql}) = lower(${val})`)
             }
         }
     }
 
-    const finalCondition = whereConditions.length === 1 ? whereConditions[0] : and(...whereConditions)
-    const serverLogs = await db
+    const query = db
         .select()
         .from(serverLogsTable)
-        .where(finalCondition)
-        .orderBy(desc(serverLogsTable.createdAt))
-        .limit(1)
-    return serverLogs.length > 0 ? serverLogs[0] : null
+        .limit(limit)
+
+    if(whereConditions.length > 0){ query.where(whereConditions.length === 1 ? whereConditions[0] : and(...whereConditions)) }
+    const serverLogs = await query
+    return serverLogs
 }
 
 export async function getAllServerLogsInDB(){
@@ -198,7 +215,7 @@ export async function createServerLogInDB(discordUserId, affectedDiscordUserId, 
             discordUserId,
             affectedDiscordUserId,
             eventType,
-            details: JSON.stringify(details) //extra data object
+            details //extra data object
         })
         .returning()
     return newLog[0]
