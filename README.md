@@ -2,7 +2,7 @@
 
 ## Logging
 - [x] Fetch/filter all logs of a specific User/Affected User/Event Type/Details _(messages or actions that User did)_.
-- [ ] Archive old logs every x months, then delete those "archived" logs after x months _(can "unarchive" and view logs if wanted)_.
+- [x] Archive old logs every x months, then delete those "archived" logs after x months _(can "unarchive" and view logs if wanted)_.
 - [ ] Keep track of changes within' the Server _(stored in database, and copy of log on a Server channel)_ including: 
    - [x] Member joins/leaves/is kicked/is banned/is unbanned.
    - [x] Member has timeout applied or removed (and who applied/removed it, with how much time was applied/how much was left when it was removed).
@@ -33,10 +33,12 @@
 
 ## General
 - [x] Welcome new users with custom message(s). _eg. `Please give our newest guest, @username, a warm welcome.`_
+- [ ] Help menu for all commands/subcommands, with categorizes, examples individual command info.
 
 
 # Dependencies:
 [VRChat API](https://vrchat.community): Interacting with the VRChat system. <br/>
 [@kindlyfire/vrchatapi](https://www.npmjs.com/package/@kindlyfire/vrchatapi): Easy interaction and implementation of VRChat's API via Javascript. <br/>
 [PostgreSQL](https://www.npmjs.com/package/pg): SQL-based database handling. <br/>
-[Drizzle](https://orm.drizzle.team): ORM allowing easy interaction and implementation with PostgreSQL.
+[Drizzle](https://orm.drizzle.team): ORM allowing easy interaction and implementation with PostgreSQL. <br/>
+[node-cron](https://www.npmjs.com/package/node-cron): Node.js module for scheduling tasks using crontab syntax.

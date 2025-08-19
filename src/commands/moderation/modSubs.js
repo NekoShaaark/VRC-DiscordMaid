@@ -1,8 +1,9 @@
 //imports
 import { ActionRowBuilder, AuditLogEvent, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
-import { createServerLogInDB, createUserNoteInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
+import { createServerLogInDB, createUserNoteInDB, getAllArchivedServerLogsInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
 import LogEventTypes from '../../misc/logEventTypes.js'
 import { serverLogLogger } from '../../misc/serverLogLogger.js'
+import { runServerLogArchivalTask, unarchiveServerLog } from '../../db/serverLogArchival.js'
 
 let currentComponents
 const yesButton = new ButtonBuilder()
@@ -52,11 +53,15 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
         }
     }
 
-    if(serverLogOption == "view"){ handledServerLog = `Server Log` }
+    if(serverLogOption == "view"){ handledServerLog = "Server Log" }
     if(serverLogOption == "view-all"){ handledServerLog = "All Server Logs" }
+    if(serverLogOption == "view-archived"){ handledServerLog = "Archived Server Log" }
+    if(serverLogOption == "view-all-archived"){ handledServerLog = "All Archived Server Logs" }
     if(serverLogIndex && serverLogLength > 1){ serverLogPlacement = `${serverLogIndex}/${serverLogLength}` }
 
-    let accountCreatedAtDate = await formatDateToLocaleString(serverLogData.details.accountCreatedAt)
+    let restoredAtDate = ""
+    if(serverLogData.restoredAt){ restoredAtDate = `Unarchived: ${await formatDateToLocaleString(serverLogData.restoredAt, "long")}` }
+    const accountCreatedAtDate = await formatDateToLocaleString(serverLogData.details.accountCreatedAt)
     const footerCreatedAtDate = await formatDateToLocaleString(serverLogData.createdAt, "long")
     const timeoutLength = serverLogData.details.timeoutLength
     const timeoutRemaining = serverLogData.details.timeoutRemaining
@@ -75,7 +80,7 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
             ...(timeoutRemaining ? [{ name: `Timeout Remaining`, value: `${timeoutRemaining}`, inline: true }] : []),
             ...(logReason ? [{ name: `Reason`, value: `${logReason}`, inline: true }] : [])
         )
-        .setFooter({ text: `LogID: ${serverLogData.logId}  •  ${footerCreatedAtDate}` })
+        .setFooter({ text: `LogID: ${serverLogData.logId}  •  ${footerCreatedAtDate}   \n${restoredAtDate}` })
     return serverLogEmbed
 }
 
@@ -89,6 +94,8 @@ async function handlePageEmbed(interaction, array, removeMultipleNotes, embedTyp
     if(embedType == "userNote"){ embeds = await Promise.all(array.map((note, index) => createUserNoteEmbed(note, "view", index+1, array.length))) }
     else if(embedType == "serverLog"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view", index+1, array.length))) }
     else if(embedType == "serverLog-all"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-all", index+1, array.length))) }
+    else if(embedType == "archivedServerLog"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-archived", index+1, array.length))) }
+    else if(embedType == "archivedServerLog-all"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-all-archived", index+1, array.length))) }
     
     //left and right buttons
     const superLeftButton = new ButtonBuilder()
@@ -369,9 +376,13 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
 
     //check if singular note exists
     else{
+        let entryEmbed
         const foundEntry = await getFromDBFunction(null, entryIdArg)
         if(!foundEntry){ interaction.editReply(`This ${subcommandMessageContext} ID does not exist.`); return }
-        const entryEmbed = await createUserNoteEmbed(foundEntry, "view")
+        
+        //create embed for subcommandGroup
+        if(subcommandGroup == "userNote"){ entryEmbed = await createUserNoteEmbed(foundEntry, "view") }
+        else if(subcommandGroup == "serverLog"){ entryEmbed = await createServerLogEmbed(interaction, foundEntry, "view") }
         embedMessage = await interaction.editReply({
             content: `**Are you sure you want to remove this ${subcommandMessageContext}?**`,
             embeds: [entryEmbed],
@@ -547,12 +558,36 @@ export default {
                             option
                                 .setName('logid')
                                 .setDescription('Log ID to view (overrides other filters).'))
+                        .addBooleanOption(option =>
+                            option
+                                .setName('archived')
+                                .setDescription('View only Archived Logs (optional).'))
                 )
                 //view-all logs subcommand
                 .addSubcommand(subcommand => 
                     subcommand
                         .setName('view-all')
                         .setDescription('View all logs in existence ever.')
+                        .addBooleanOption(option =>
+                            option
+                                .setName('archived')
+                                .setDescription('View only Archived Logs (optional).'))
+                )
+                //TODO: make this for admins only
+                .addSubcommand(subcommand => 
+                    subcommand
+                        .setName('archive')
+                        .setDescription('Run the Server Logs Archival task NOW (instead of on its regular schedule).')
+                )
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('unarchive')
+                        .setDescription('Pull an Archived Server Log back into the living (this also resets its time-to-archive)!')
+                        .addStringOption(option =>
+                            option
+                                .setName('logid')
+                                .setDescription('Log ID to unarchive.')
+                                .setRequired(true))
                 )
         )
         //TODO: group-user subcommand
@@ -715,6 +750,7 @@ export default {
                 const affectedUserArg = interaction.options.getUser("affecteduser")
                 const userArg = interaction.options.getUser("user")
                 const limitArg = interaction.options.getInteger("limit") || 25
+                const archivedArg = interaction.options.getBoolean("archived")
 
                 //logId is more weighted, as it only displays one server log
                 if(logIdArg){ 
@@ -727,9 +763,15 @@ export default {
                     return
                 }
 
+                //if detailValue is selected without detail, return
+                if(!detailArg && detailValueArg){
+                    await interaction.editReply("Please provide the Detail filter to use Detail Value.")
+                    return
+                }
+
                 //if nothing is selected, return
-                if(!detailArg && !detailValueArg && !eventTypeArg && !affectedUserArg && !userArg){
-                    await interaction.editReply("Please provide at least one filter (User, Affected User, Event Type, or Detail) to view filtered Logs.")
+                if(!detailArg && !detailValueArg && !eventTypeArg && !affectedUserArg && !userArg && !archivedArg){
+                    await interaction.editReply("Please provide at least one filter (User, Affected User, Event Type, Detail, or Archived) to view filtered Logs.")
                     return
                 }
 
@@ -743,22 +785,65 @@ export default {
                     affectedUserArg?.id || null,
                     eventTypeArg || null,
                     details,
-                    limitArg
+                    limitArg,
+                    archivedArg
                 )
                 if(!allFoundLogs || allFoundLogs.length === 0){
                     await interaction.editReply("No matching logs were found.")
                     return
                 }
+
+                //set pageEmbedType to be normal or archived
+                let pageEmbedType = "serverLog"
+                if(archivedArg){ pageEmbedType = "archivedServerLog" }
                 
                 await interaction.editReply("Fetching filtered Logs, this might take a while. Please be patient, and do not run the command again until this message changes.")
-                await handlePageEmbed(interaction, allFoundLogs, false, "serverLog")
+                await handlePageEmbed(interaction, allFoundLogs, false, pageEmbedType)
             }
             //logs view-all subcommand
             if(subcommand === "view-all"){
-                let allServerLogsInDb = await getAllServerLogsInDB()
-                if(!allServerLogsInDb[0]){ await interaction.editReply('There are no server logs currently stored. Logs will be made when a server event is triggered (eg. user joins server).'); return }
-                await interaction.editReply("This might take a while, please be patient, and do not run the command again until this message changes.")
-                await handlePageEmbed(interaction, allServerLogsInDb, false, "serverLog-all")
+                let allLogs
+                let pageEmbedType
+                let errorMessage
+                if(interaction.options.getBoolean("archived")){ 
+                    allLogs = await getAllArchivedServerLogsInDB()
+                    pageEmbedType = "archivedServerLog-all"
+                    errorMessage = "There are no Archived Server Logs currently stored. Archived Logs will be made when a Server Log is archived (logs will be archived after existing for 90 days)."
+                }
+                else{ 
+                    allLogs = await getAllServerLogsInDB()
+                    pageEmbedType = "serverLog-all"
+                    errorMessage = "There are no Server Logs currently stored. Logs will be made when a Server Event is triggered (eg. when a user joins/leaves the server)."
+                }
+
+                if(!allLogs[0]){ await interaction.editReply(errorMessage); return }
+                await interaction.editReply("This might take a while. Please be patient, and do not run the command again until this message changes.")
+                await handlePageEmbed(interaction, allLogs, false, pageEmbedType)
+            }
+            //logs archive subcommand
+            if(subcommand === "archive"){
+                try{ 
+                    const archivalResult = await runServerLogArchivalTask()
+                    await interaction.editReply(`Server Logs Archival task has been executed manually.\nArchived: ${archivalResult.archived}\nDeleted: ${archivalResult.deleted}`)
+                }
+                catch(error){
+                    console.error("Error running Server Logs Archvial task: ", error)
+                    await interaction.editReply("Failed to run Server Logs Archival task! Please check the console for more info.")
+                }
+            }
+            //logs unarchive subcommand
+            if(subcommand === "unarchive"){
+                const logId = interaction.options.getString('logid')
+                try{
+                    const isLogArchived = await getServerLogInDB(null, logId, null, null, null, null, true)
+                    if(!isLogArchived){ await interaction.editReply("Provided LogID is not archived, please provide a valid archived Server Log to unarchive."); return }
+                    const restoredLogId = await unarchiveServerLog(logId)
+                    await interaction.editReply(`Successfully restored log ${restoredLogId}`)
+                }
+                catch(error){ 
+                    console.error("Error restoring Archived Server Log: ", error)
+                    await interaction.editReply(`There was an error restoring ${logId}. Please check the console for more info.`)
+                }
             }
         }
 

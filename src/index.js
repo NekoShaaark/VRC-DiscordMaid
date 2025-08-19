@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { ActivityType, Client, Collection, GatewayIntentBits } from 'discord.js'
 import { initializeVRC } from './vrchatClient.js'
+import { scheduleCronServerLogArchivalTask } from './db/cronTaskHandling.js'
 dotenv.config()
 
 //intents
@@ -35,6 +36,9 @@ const eventFiles = readdirSync(eventsPath).filter(file => file.endsWith('.js'))
 
 //initialize vrchat api
 await initializeVRC()
+
+//initalize cron server log archival task
+scheduleCronServerLogArchivalTask()
 
 //command folder handling
 for(const folder of commandFolders){

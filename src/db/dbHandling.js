@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { and, eq, sql } from 'drizzle-orm'
-import { vrcUsersTable, userNotesTable, serverLogsTable } from './schema.js'
+import { and, asc, eq, sql } from 'drizzle-orm'
+import { vrcUsersTable, userNotesTable, serverLogsTable, archivedServerLogsTable } from './schema.js'
 
 const db = drizzle(process.env.DATABASE_URL)
 
@@ -135,26 +135,28 @@ export async function createUserNoteInDB(discordUserId, discordUsername, userNot
 
 
 //server logs handling
-export async function getServerLogInDB(discordUserId, logId, affectedDiscordUserId, eventType, details, limit){
+export async function getServerLogInDB(discordUserId, logId, affectedDiscordUserId, eventType, details, limit, archived){
     const allowedDetailKeys = {
         reason: 'string',
         timeoutLength: 'number',
         accountCreatedAt: 'string'
     }
     let whereConditions = []
+    let tableToFetchFrom = serverLogsTable
+    if(archived){ tableToFetchFrom = archivedServerLogsTable }
 
     if(logId != null){
         let serverLog = await db
             .select()
-            .from(serverLogsTable)
-            .where(eq(serverLogsTable.logId, logId))
+            .from(tableToFetchFrom)
+            .where(eq(tableToFetchFrom.logId, logId))
             .limit(1)
         return serverLog.length > 0 ? serverLog[0] : null //return one note matching logId
     }
 
-    if(discordUserId != null){ whereConditions.push(eq(serverLogsTable.discordUserId, discordUserId)) }
-    if(affectedDiscordUserId != null){ whereConditions.push(eq(serverLogsTable.affectedDiscordUserId, affectedDiscordUserId)) }
-    if(eventType != null){ whereConditions.push(eq(serverLogsTable.eventType, eventType)) }
+    if(discordUserId != null){ whereConditions.push(eq(tableToFetchFrom.discordUserId, discordUserId)) }
+    if(affectedDiscordUserId != null){ whereConditions.push(eq(tableToFetchFrom.affectedDiscordUserId, affectedDiscordUserId)) }
+    if(eventType != null){ whereConditions.push(eq(tableToFetchFrom.eventType, eventType)) }
     if(details && typeof details === 'object'){
         for(const [key, rawVal] of Object.entries(details)){
             if(!(key in allowedDetailKeys)){ continue }
@@ -166,19 +168,19 @@ export async function getServerLogInDB(discordUserId, logId, affectedDiscordUser
                 const num = Number(rawVal)
                 if(!Number.isFinite(num)){ continue }
                 //compare as numeric: (details->>'timeoutLength')::numeric = $1
-                whereConditions.push(sql`(${serverLogsTable.details}->>${keySql}) ILIKE ${'%' + val + '%'}`)
+                whereConditions.push(sql`(${tableToFetchFrom.details}->>${keySql}) ILIKE ${'%' + val + '%'}`)
             } 
             else{
               //compare as case-insensitive string
               const val = String(rawVal)
-              whereConditions.push(sql`lower(${serverLogsTable.details}->>${keySql}) = lower(${val})`)
+              whereConditions.push(sql`lower(${tableToFetchFrom.details}->>${keySql}) = lower(${val})`)
             }
         }
     }
 
     const query = db
         .select()
-        .from(serverLogsTable)
+        .from(tableToFetchFrom)
         .limit(limit)
 
     if(whereConditions.length > 0){ query.where(whereConditions.length === 1 ? whereConditions[0] : and(...whereConditions)) }
@@ -190,6 +192,7 @@ export async function getAllServerLogsInDB(){
     let allLogs = await db
         .select()
         .from(serverLogsTable)
+        .orderBy(asc(serverLogsTable.logId))
     return allLogs
 }
 
@@ -219,4 +222,14 @@ export async function createServerLogInDB(discordUserId, affectedDiscordUserId, 
         })
         .returning()
     return newLog[0]
+}
+
+
+//archived server log handling
+export async function getAllArchivedServerLogsInDB(){
+    let allLogs = await db
+        .select()
+        .from(archivedServerLogsTable)
+        .orderBy(asc(archivedServerLogsTable.logId))
+    return allLogs
 }
