@@ -7,10 +7,10 @@
    - [x] Member joins/leaves/is kicked/is banned/is unbanned.
    - [x] Member has timeout applied or removed (and who applied/removed it, with how much time was applied/how much was left when it was removed).
    - [ ] Role change of a member (adding/removing, and who did it).
-   - [ ] Message is edited/deleted (with edited/deleted content). <= might not need this
+   - [ ] Message is edited/deleted (with edited/deleted content). **<= might not need this**
    - [ ] Invite is created/deleted (and who created/deleted it).
    - [ ] VRChat profile is linked/unlinked (and who linked/unlinked the profile, including if a moderator unlinked it, with a reason).
-   - [ ] User Note is created/deleted (and who created/deleted it). <= might not need this
+   - [ ] User Note is created/deleted (and who created/deleted it). **<= might not need this**
 
 ## VRChat
 - [x] Display any VRChat user's profile.
@@ -37,8 +37,11 @@
 
 
 # Dependencies:
+[Discord.js](https://www.npmjs.com/package/discord.js): Interacting with Discord's Bot system. <br/>
 [VRChat API](https://vrchat.community): Interacting with the VRChat system. <br/>
 [@kindlyfire/vrchatapi](https://www.npmjs.com/package/@kindlyfire/vrchatapi): Easy interaction and implementation of VRChat's API via Javascript. <br/>
+[Axios](https://www.npmjs.com/package/axios): Dependency of @kindlyfire/vrchatapi. <br/>
+[dotenv](https://www.npmjs.com/package/dotenv): Storing and fetching client secrets. <br/>
 [PostgreSQL](https://www.npmjs.com/package/pg): SQL-based database handling. <br/>
 [Drizzle](https://orm.drizzle.team): ORM allowing easy interaction and implementation with PostgreSQL. <br/>
-[node-cron](https://www.npmjs.com/package/node-cron): Node.js module for scheduling tasks using crontab syntax.
+[Node Cron](https://www.npmjs.com/package/node-cron): Node-based Crontab process for scheduling tasks.
