@@ -137,9 +137,16 @@ export async function createUserNoteInDB(discordUserId, discordUsername, userNot
 //server logs handling
 export async function getServerLogInDB(discordUserId, logId, affectedDiscordUserId, eventType, details, limit, archived){
     const allowedDetailKeys = {
+        accountCreatedAt: 'string',
+        timeoutLength: 'string',
+        timeoutRemaining: 'string',
+        vrcUserId: 'string',
         reason: 'string',
-        timeoutLength: 'number',
-        accountCreatedAt: 'string'
+        inviteCode: 'string',
+        inviteChannel: 'string',
+        inviteMaxAge: 'string',
+        inviteMaxUses: 'string',
+        inviteTemporary: 'string'
     }
     let whereConditions = []
     let tableToFetchFrom = serverLogsTable
@@ -160,20 +167,23 @@ export async function getServerLogInDB(discordUserId, logId, affectedDiscordUser
     if(details && typeof details === 'object'){
         for(const [key, rawVal] of Object.entries(details)){
             if(!(key in allowedDetailKeys)){ continue }
+
+            //key-only search: user provided detailArg but no detailValueArg
+            if(rawVal == null){ whereConditions.push(sql`${tableToFetchFrom.details} ? ${key}`); continue }
             
             const keySql = sql.raw(`'${key}'`) //safe because of allowlist
             const type = allowedDetailKeys[key]
             
+            //compare as numeric
             if(type === 'number'){
                 const num = Number(rawVal)
                 if(!Number.isFinite(num)){ continue }
-                //compare as numeric: (details->>'timeoutLength')::numeric = $1
-                whereConditions.push(sql`(${tableToFetchFrom.details}->>${keySql}) ILIKE ${'%' + val + '%'}`)
+                whereConditions.push(sql`(${tableToFetchFrom.details}->>${keySql})::numeric = ${num}`)
             } 
+            //compare as case-insensitive string
             else{
-              //compare as case-insensitive string
               const val = String(rawVal)
-              whereConditions.push(sql`lower(${tableToFetchFrom.details}->>${keySql}) = lower(${val})`)
+              whereConditions.push(sql`lower(${tableToFetchFrom.details}->>${keySql}) LIKE lower(${`%${val}%`})`)
             }
         }
     }
@@ -181,6 +191,7 @@ export async function getServerLogInDB(discordUserId, logId, affectedDiscordUser
     const query = db
         .select()
         .from(tableToFetchFrom)
+        .orderBy(asc(serverLogsTable.logId))
         .limit(limit)
 
     if(whereConditions.length > 0){ query.where(whereConditions.length === 1 ? whereConditions[0] : and(...whereConditions)) }

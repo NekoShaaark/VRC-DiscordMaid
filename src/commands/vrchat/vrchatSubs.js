@@ -1,8 +1,10 @@
 //imports
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
-import { getUserInDB, removeUserInDB, createUserInDB } from '../../db/dbHandling.js'
+import { getUserInDB, removeUserInDB, createUserInDB, createServerLogInDB } from '../../db/dbHandling.js'
 import { getConfig } from '../../configManager.js'
 import { getVRC } from '../../vrchatClient.js'
+import { serverLogLogger } from '../../misc/serverLogLogger.js'
+import LogEventTypes from '../../misc/logEventTypes.js'
 
 const vrc = await getVRC()
 const config = await getConfig()
@@ -162,12 +164,15 @@ export default {
                     option
                         .setName('user')
                         .setDescription('User to unlink the profile of, if not you. Only mods can specify a user or VRChat profile.'))
+                .addStringOption(option => 
+                    option
+                        .setName('reason')
+                        .setDescription("Reason for unlinking this user's profile (Mods only)."))
         ),
     cooldown: 15,
 
     //runs the command
     async execute(interaction) {
-        const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
         const subcommand = interaction.options.getSubcommand()
         const userInteraction = interaction.user
         await interaction.deferReply()
@@ -194,7 +199,7 @@ export default {
                         const mentionedUserId = profileArg.slice(2, -1)
                         const userInDb = await getUserInDB(mentionedUserId, null)
                         if(!userInDb){
-                            await interaction.editReply("That user has not linked their VRChat account to their Discord account. \nTo link your accounts, use the `/vrchat link` command.")
+                            await interaction.editReply("That user has not linked their VRChat profile to their Discord account. \nTo link your accounts, use the `/vrchat link` command.")
                             return
                         }
                         const foundUsers = await vrc.users.get(userInDb.vrcUserId)
@@ -206,7 +211,7 @@ export default {
                         const vrcUserId = profileArg.slice(29)
                         const foundUsers = await vrc.users.get(vrcUserId)
                         if(!foundUsers){
-                            await interaction.editReply("Invalid VRChat Profile Link given, please provide a valid Link.")
+                            await interaction.editReply("Invalid VRChat profile link given, please provide a valid link.")
                             return
                         }
                         foundUser = await foundUsers.data
@@ -241,7 +246,7 @@ export default {
                 const userInDb = await getUserInDB(interaction.user.id, null)
                 if(userInDb){
                     const foundUser = await vrc.users.get(userInDb.vrcUserId)
-                    const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data)
+                    const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data, shortOrLong)
                     await interaction.editReply({
                         content: "",
                         embeds: [createdVRCUserEmbed.foundUserEmbed],
@@ -249,7 +254,7 @@ export default {
                     })
                     return
                 }
-                await interaction.editReply("Please link your VRChat account to your Discord account using the `/vrchat link` command to view your account with this command.")
+                await interaction.editReply("Please link your VRChat profile to your Discord account using the `/vrchat link` command to view your account with this command.")
             }
         }
 
@@ -260,25 +265,25 @@ export default {
             
             //invalid vrchat profile link
             if(!foundUser){ 
-                await interaction.editReply("Provided VRChat Profile Link is invalid, please check if provided link is correct.")
+                await interaction.editReply("Provided VRChat profile link is invalid, please check if provided link is correct.")
                 return 
             }
 
             //if user already exists, don't need to create new user
-            //otherwise, if vrchat is already linked to another user, send explanation
             if(await getUserInDB(userInteraction.id, null)){ 
-                interaction.editReply("You have already linked your VRChat Profile to this Discord account. \nTo see your profile use the `/vrc profile` command. \nOr to unlink your account use the `/vrchat unlink` command.")
+                interaction.editReply("You have already linked your VRChat profile to this Discord account. \nTo see your profile use the `/vrchat profile` command. \nOr to unlink your account use the `/vrchat unlink` command.")
                 return
             }
+            //otherwise, if vrchat profie is already linked to another user, send explanation
             else if(await getUserInDB(null, foundUser.id)){
-                interaction.editReply("This VRChat Profile is already linked to someone's Discord account. \nIf this Profile is yours, please contact an admin to fix this.")
+                interaction.editReply("This VRChat profile is already linked to someone's Discord account. \nIf this profile is yours, please contact an admin to fix this.")
                 return
             }
             
             //check if this is the user's account, if is, link it, if not discard it
             const createdVRCUserEmbed = await createVRCUserEmbed(foundUser, false)
             await interaction.editReply({ 
-                content: "**Is this your User?**", 
+                content: "**Do you want to link this your VRChat profile to your Discord account?**", 
                 embeds: [createdVRCUserEmbed.foundUserEmbed],
                 components: [booleanActionRow]
             })
@@ -297,12 +302,17 @@ export default {
                         //create user and add it to database
                         const newUser = await createUserInDB(userInteraction.id, userInteraction.username, foundUser) 
                         if(newUser){ 
-                            console.log(`Added ${userInteraction.username} to database.`)
-                            await i.editReply({ content: `Successfully linked VRChat profile *"${foundUser.displayName}"* to Discord profile *"${userInteraction.username}"*.`, embeds: [], components: [] }) 
+                            //add server log to db, and send copy of log to logging channel
+                            await i.editReply({ content: `Successfully linked VRChat profile *"${foundUser.displayName}"* to Discord account *"${userInteraction.username}"*.`, embeds: [], components: [] }) 
+                            const newLog = await createServerLogInDB(userInteraction.id, null, LogEventTypes.VRC_LINKED, {
+                                //details object
+                                vrcUserId: newUser.vrcUserId
+                            })
+                            await serverLogLogger(interaction, newLog)
                         }
                     }
                     catch(error){ 
-                        console.error(error)
+                        console.error("There was an error linking a user's VRChat profile: ", error)
                         await i.editReply({ content: "There was an error linking your accounts, please try again or contact an admin.", embeds: [], components: [] })
                     }
                 }
@@ -314,9 +324,11 @@ export default {
         if(subcommand === "unlink"){
             //admin-only portion
             let userInDb
-            let embedContent = "**Do you want to unlink this User's account?**"
+            let embedContent = "**Do you want to unlink this User's VRChat profile from their Discord account?**"
             let vrcAccountToUnlink = interaction.options.getString('user')
+            let reasonArg = interaction.options.getString('reason')
             let isAdmin = false
+            let affectedUser
             if(vrcAccountToUnlink){
                 const guildMember = await interaction.guild.members.fetch(userInteraction.id)
 
@@ -346,16 +358,16 @@ export default {
             //get userInteraction if userInDb did not get defined above (in admin portion)
             if(!isAdmin){ 
                 userInDb = await getUserInDB(userInteraction.id, null)
-                embedContent = "**Is this the account you to unlink from?**"
+                embedContent = "**Do you want to unlink this VRChat profile from your Discord account?**"
             }
             if(!userInDb){
-                interaction.editReply("You do not have an account linked. To link your Discord account to your VRChat account, use the `/vrchat link` command.")    
+                interaction.editReply("You do not have an account linked. To link your Discord account to your VRChat profile, use the `/vrchat link` command.")    
                 return
             }
 
             //check if this is the user's account, if is, unlink it, if not discard it
             const foundUser = await vrc.users.get(userInDb.vrcUserId)
-            const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data)
+            const createdVRCUserEmbed = await createVRCUserEmbed(foundUser.data, false)
             const userDeletedUsername = userInDb.discordUsername
             const embedMessage = await interaction.editReply({ 
                 content: embedContent,
@@ -370,8 +382,8 @@ export default {
                 await i.deferUpdate()
                 if(i.customId === 'noButton'){
                     //non-admin version (top/if) vs admin version (bottom/else) 
-                    if(!isAdmin){ await i.editReply({ content: `Cancelled unlinking your VRChat profile from your Discord profile.`, embeds: [], components: [] }) }
-                    else{ await i.editReply({ content: `Cancelled unlinking ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) }
+                    if(!isAdmin){ await i.editReply({ content: `Cancelled unlinking your VRChat profile from your Discord account.`, embeds: [], components: [] }) }
+                    else{ await i.editReply({ content: `Cancelled unlinking ${userDeletedUsername}'s VRChat profile from their Discord account.`, embeds: [], components: [] }) }
                     return
                 }
                 else if(i.customId === 'yesButton'){
@@ -379,12 +391,21 @@ export default {
                         //delete user from database
                         const userDeleted = await removeUserInDB(userInteraction.id, null)
                         if(userDeleted){ 
-                            console.log(`Removed ${userInteraction.username} from database.`)
-                            if(!isAdmin){ await i.editReply({ content: `Successfully unlinked your VRChat profile from their Discord profile.`, embeds: [], components: [] })  }
-                            else{ 
-                                await i.editReply({ content: `Successfully unlinked ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) 
-                                await loggingChannel.send({ content: `${interaction.user} unlinked ${userDeletedUsername}'s VRChat profile from their Discord profile.` })
+                            if(!isAdmin){ 
+                                await i.editReply({ content: `Successfully unlinked your VRChat profile from your Discord account.`, embeds: [], components: [] })  
+                                affectedUser = null
                             }
+                            else{ 
+                                await i.editReply({ content: `Successfully unlinked ${userDeletedUsername}'s VRChat profile from their Discord account.`, embeds: [], components: [] }) 
+                                affectedUser = userInDb.discordUserId
+                            }
+                            //add server log to db, and send copy of log to logging channel
+                            const newLog = await createServerLogInDB(userInteraction.id, affectedUser, LogEventTypes.VRC_UNLINKED, {
+                                //details object
+                                vrcUserId: userInDb.vrcUserId,
+                                reason: reasonArg
+                            })
+                            await serverLogLogger(interaction, newLog)
                         }
                     }
                     catch(error){ 
@@ -397,8 +418,8 @@ export default {
             //on collector timer's end
             collector.on('end', async (collected) => {
                 if(collected.size === 0){ 
-                    if(!isAdmin){ await embedMessage.edit({ content: `Cancelled unlinking your VRChat profile from your Discord profile.`, embeds: [], components: [] }) }
-                    else{ await embedMessage.edit({ content: `Cancelled unlinking ${userDeletedUsername}'s VRChat profile from their Discord profile.`, embeds: [], components: [] }) }
+                    if(!isAdmin){ await embedMessage.edit({ content: `Cancelled unlinking your VRChat profile from your Discord account.`, embeds: [], components: [] }) }
+                    else{ await embedMessage.edit({ content: `Cancelled unlinking ${userDeletedUsername}'s VRChat profile from their Discord account.`, embeds: [], components: [] }) }
                 }
                 return
             })

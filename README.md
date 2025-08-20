@@ -8,8 +8,8 @@
    - [x] Member has timeout applied or removed (and who applied/removed it, with how much time was applied/how much was left when it was removed).
    - [ ] Role change of a member (adding/removing, and who did it).
    - [ ] Message is edited/deleted (with edited/deleted content). **<= might not need this**
-   - [ ] Invite is created/deleted (and who created/deleted it).
-   - [ ] VRChat profile is linked/unlinked (and who linked/unlinked the profile, including if a moderator unlinked it, with a reason).
+   - [x] Invite is created/deleted (and who created/deleted it).
+   - [x] VRChat profile is linked/unlinked (and who linked/unlinked the profile, including if a moderator unlinked it, with a reason).
    - [ ] User Note is created/deleted (and who created/deleted it). **<= might not need this**
 
 ## VRChat
@@ -27,7 +27,7 @@
 ## Moderation
 - [x] Kick/ban/timeout any user with reason _(then send message in logging channel)_.
    - [ ] _(optional)_ Send mp4 file (or reason for ban/kick) to banned user _(might be against Discord TOS)_.
-- [x] Add/Remove/View notes on specified users.
+- [x] Add/Remove/View notes on specified users including:
    - [x] Mass-remove notes via array of Note IDs.
    - [x] Log notes into logging channel.
 

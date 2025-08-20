@@ -48,7 +48,7 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
     if(affectedGuildMember){ 
         try{ affectedGuildMember = await interaction.guild.members.fetch(serverLogData.affectedDiscordUserId) }
         catch{ 
-            const exemptedTypes = ["MEMBER_KICK", "MEMBER_BAN", "MEMBER_UNBAN", "MEMBER_TIMEOUT_ADD", "MEMBER_TIMEOUT_REMOVE"] //set to null if eventType isn't one of these
+            const exemptedTypes = ["MEMBER_KICK", "MEMBER_BAN", "MEMBER_UNBAN", "MEMBER_TIMEOUT_ADD", "MEMBER_TIMEOUT_REMOVE", "VRCHAT_UNLINKED"] //set to null if eventType isn't one of these
             if(!exemptedTypes.includes(serverLogData.eventType)){ affectedGuildMember = null }
         }
     }
@@ -65,20 +65,31 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
     const footerCreatedAtDate = await formatDateToLocaleString(serverLogData.createdAt, "long")
     const timeoutLength = serverLogData.details.timeoutLength
     const timeoutRemaining = serverLogData.details.timeoutRemaining
+    const vrcUserId = serverLogData.details.vrcUserId
     const logReason = serverLogData.details.reason
-    
+    const inviteCode = serverLogData.details.inviteCode
+    const inviteChannel = serverLogData.details.inviteChannel
+    const inviteMaxAge = serverLogData.details.inviteMaxAge
+    const inviteMaxUses = serverLogData.details.inviteMaxUses
+    const inviteTemporary = serverLogData.details.inviteTemporary
+
     const serverLogEmbed = new EmbedBuilder()
         .setColor('Greyple')
         .setTitle(`${handledServerLog} ${serverLogPlacement}`)
         .addFields(
-            // { name: `Server Log ${serverLogPlacement}`, value: `` },
             { name: `Event Type`, value: `${serverLogData.eventType}`, inline: true },
             { name: `User`, value: `${guildMember}`, inline: true },
             ...(affectedGuildMember ? [{ name: `Affected User`, value: `${affectedGuildMember}`, inline: true }] : []),
             ...(accountCreatedAtDate ? [{ name: `Account Created`, value: `${accountCreatedAtDate}`, inline: true }] : []),
             ...(timeoutLength ? [{ name: `Timeout Length`, value: `${timeoutLength}`, inline: true }] : []),
             ...(timeoutRemaining ? [{ name: `Timeout Remaining`, value: `${timeoutRemaining}`, inline: true }] : []),
-            ...(logReason ? [{ name: `Reason`, value: `${logReason}`, inline: true }] : [])
+            ...(vrcUserId ? [{ name: `VRChat User ID`, value: `${vrcUserId}`, inline: true }] : []),
+            ...(logReason ? [{ name: `Reason`, value: `${logReason}`, inline: true }] : []),
+            ...(inviteCode ? [{ name: `Invite Code`, value: `${inviteCode}`, inline: true }] : []),
+            ...(inviteChannel ? [{ name: `Invite Channel`, value: `${inviteChannel}`, inline: true }] : []),
+            ...(inviteMaxAge ? [{ name: `Invite Length`, value: `${inviteMaxAge}`, inline: true }] : []),
+            ...(inviteMaxUses ? [{ name: `Max Uses`, value: `${inviteMaxUses}`, inline: true }] : []),
+            ...(inviteTemporary ? [{ name: `Temporary`, value: `${inviteTemporary}`, inline: true }] : [])
         )
         .setFooter({ text: `LogID: ${serverLogData.logId}  •  ${footerCreatedAtDate}   \n${restoredAtDate}` })
     return serverLogEmbed
@@ -186,7 +197,7 @@ async function formatEntriesArrayMessage(array, entryId, startingMessage){
     return formattedMessage
 }
 
-async function handleMassDBEntryRemoval(interaction, embedMessage, loggingChannel, array, deleteFunction, removalType){
+async function handleMassDBEntryRemoval(embedMessage, array, deleteFunction, removalType){
     if(!array){ return null }
 
     let removedEntries = []
@@ -205,7 +216,6 @@ async function handleMassDBEntryRemoval(interaction, embedMessage, loggingChanne
 
     console.log(`Removed ${messageContext} ${removedEntriesMessage} from database.`)
     await embedMessage.edit({ content: `Successfully deleted ${messageContext} ${removedEntriesMessage}.`, embeds: [], components: [] })
-    await loggingChannel.send({ content: `${interaction.user} deleted ${messageContext} ${removedEntriesMessage}.` })
 }
 
 async function handleConfirmationMessage(message, userArg, contextType){
@@ -243,7 +253,7 @@ async function handleConfirmationMessage(message, userArg, contextType){
     })
 }
 
-async function convertMinutesToString(inputMinutes){
+export async function convertMinutesToString(inputMinutes, noBrackets){
     if(inputMinutes < 60){ return ' ' }
 
     const days = Math.floor(inputMinutes / 1440)
@@ -261,6 +271,7 @@ async function convertMinutesToString(inputMinutes){
         resultTime += `${minutes} minute${minutes > 1 ? 's' : ''}`
     }
     
+    if(noBrackets){ return `${resultTime}` || '0 minutes' }
     return ` (${resultTime}) ` || '0 minutes'
 }
 
@@ -304,7 +315,7 @@ async function getTimeRemainingString(targetIsoString) {
     return `${minutesRemaining} minutes${await convertMinutesToString(minutesRemaining)}`
 }
 
-async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcommandGroup, loggingChannel, getFromDBFunction, removeFromDBFunction){
+async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcommandGroup, getFromDBFunction, removeFromDBFunction){
     const entryIdArg = interaction.options.getString(subcommandIdArg)
     let removeMultipleEntries = false
     let entriesArrayMessage = ""
@@ -403,7 +414,7 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
         else if(i.customId === 'yesButton'){
             try{ 
                 if(removeMultipleEntries){
-                    handleMassDBEntryRemoval(interaction, embedMessage, loggingChannel, foundEntriesArray, removeFromDBFunction, subcommandMessageContextId)
+                    handleMassDBEntryRemoval(embedMessage, foundEntriesArray, removeFromDBFunction, subcommandMessageContextId)
                     return
                 }
                 //remove singular note from database
@@ -412,7 +423,6 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
                     if(entryDeleted){ 
                         console.log(`Removed ${subcommandMessageContextId} ${entryIdArg} from database.`)
                         await i.editReply({ content: `Successfully deleted ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [] })
-                        await loggingChannel.send({ content: `${interaction.user} deleted ${subcommandMessageContextId} ${entryIdArg}.` })
                     }
                 }
             }
@@ -533,6 +543,10 @@ export default {
                                     { name: 'Member Ban', value: LogEventTypes.MEMBER_BAN },
                                     { name: 'Timeout Add', value: LogEventTypes.MEMBER_TIMEOUT_ADD },
                                     { name: 'Timeout Remove', value: LogEventTypes.MEMBER_TIMEOUT_REMOVE },
+                                    { name: 'Invite Created', value: LogEventTypes.INVITE_CREATE },
+                                    { name: 'Invite Deleted', value: LogEventTypes.INVITE_DELETE },
+                                    { name: 'VRChat Linked', value: LogEventTypes.VRC_LINKED },
+                                    { name: 'VRChat Unlinked', value: LogEventTypes.VRC_UNLINKED }
                                 ))
                         .addStringOption(option =>
                             option
@@ -541,6 +555,13 @@ export default {
                                 .addChoices(
                                     { name: 'Account Created At', value: 'accountCreatedAt' },
                                     { name: 'Timeout Length', value: 'timeoutLength' },
+                                    { name: 'Timeout Remaining', value: 'timeoutRemaining' },
+                                    { name: 'Invite Code', value: 'inviteCode' },
+                                    { name: 'Invite Channel', value: 'inviteChannel' },
+                                    { name: 'Invite Max Age', value: 'inviteMaxAge' },
+                                    { name: 'Invite Max Uses', value: 'inviteMaxUses' },
+                                    { name: 'Invite Temporary', value: 'inviteTemporary' },
+                                    { name: 'VRChat User ID', value: 'vrcUserId' },
                                     { name: 'Reason', value: 'reason' }
                                 ))
                         .addStringOption(option =>
@@ -551,7 +572,7 @@ export default {
                         .addIntegerOption(option =>
                             option
                                 .setName('limit')
-                                .setDescription('How many Logs to fetch (default 25).')
+                                .setDescription('How many Logs to fetch (default 25, max 200).')
                                 .setMinValue(1)
                                 .setMaxValue(200))
                         .addStringOption(option =>
@@ -574,11 +595,13 @@ export default {
                                 .setDescription('View only Archived Logs (optional).'))
                 )
                 //TODO: make this for admins only
+                //archive logs subcommand
                 .addSubcommand(subcommand => 
                     subcommand
                         .setName('archive')
                         .setDescription('Run the Server Logs Archival task NOW (instead of on its regular schedule).')
                 )
+                //unarchive logs subcommand
                 .addSubcommand(subcommand =>
                     subcommand
                         .setName('unarchive')
@@ -676,7 +699,6 @@ export default {
 
     //runs the command
     async execute(interaction) {
-        const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
         const subcommandGroup = interaction.options.getSubcommandGroup()
         const subcommand = interaction.options.getSubcommand()
         await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
@@ -693,11 +715,10 @@ export default {
                 const userNoteEmbed = await createUserNoteEmbed(newUserNote, "add")
 
                 await interaction.editReply({ content: "", embeds: [userNoteEmbed] })
-                await loggingChannel.send({ content: `${interaction.user} added note`, embeds: [userNoteEmbed] })
             }
             //usernote remove subcommand
             if(subcommand === "remove"){
-                handleSubcommandDBRemoval(interaction, "noteid", "userNote", loggingChannel, getUserNoteInDB, removeUserNoteInDB)
+                handleSubcommandDBRemoval(interaction, "noteid", "userNote", getUserNoteInDB, removeUserNoteInDB)
             }
             //usernote view subcommand
             if(subcommand === "view"){
@@ -739,7 +760,7 @@ export default {
         if(subcommandGroup === "logs"){
             //logs remove subcommand
             if(subcommand === "remove"){
-                handleSubcommandDBRemoval(interaction, "logid", "serverLog", loggingChannel, getServerLogInDB, removeServerLogInDB)
+                handleSubcommandDBRemoval(interaction, "logid", "serverLog", getServerLogInDB, removeServerLogInDB)
             }
             //logs view subcommand
             if(subcommand === "view"){
@@ -778,6 +799,7 @@ export default {
                 //otherwise, get all of the categorized server logs, and display them in a paginated embed
                 let details = null
                 if(detailArg && detailValueArg){ details = { [detailArg]: detailValueArg } }
+                else if(detailArg){ details = { [detailArg]: null } }
                 
                 const allFoundLogs = await getServerLogInDB(
                     userArg?.id || null,

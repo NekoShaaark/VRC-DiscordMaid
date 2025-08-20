@@ -13,10 +13,11 @@ dotenv.config()
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildModeration
+    GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.MessageContent
   ],
   presence: { 
     activities: [{ name: "the Stars.", type: ActivityType.Listening }],
@@ -41,6 +42,7 @@ await initializeVRC()
 scheduleCronServerLogArchivalTask()
 
 //command folder handling
+//loads commands into bot's runtime, so it can respond to slash-commands
 for(const folder of commandFolders){
 	const commandsPath = join(foldersPath, folder)
 	const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith('.js'))
