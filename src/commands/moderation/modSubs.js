@@ -1,9 +1,11 @@
 //imports
+import dotenv from 'dotenv'
 import { ActionRowBuilder, AuditLogEvent, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
 import { createServerLogInDB, createUserNoteInDB, getAllArchivedServerLogsInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
 import LogEventTypes from '../../misc/logEventTypes.js'
 import { serverLogLogger } from '../../misc/serverLogLogger.js'
 import { runServerLogArchivalTask, unarchiveServerLog } from '../../db/serverLogArchival.js'
+dotenv.config()
 
 let currentComponents
 const yesButton = new ButtonBuilder()
@@ -227,6 +229,7 @@ async function handleConfirmationMessage(message, userArg, contextType){
             case "kick": messageContext = "kicking"; break
             case "timeout": messageContext = "giving timeout to"; break
             case "untimeout": messageContext = "removing timeout from"; break
+            case "archive": messageContext = "activating Archival task"; break
         }
         
         //run button handler (collector)
@@ -443,6 +446,131 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
     })
 }
 
+//metadata
+export const commandMetadata = {
+    name: "mod",
+    category: "Moderation",
+    type: "group",
+    permissions: ["MODERATOR"],
+    description: "Moderation commands!!",
+    subcommandGroups: {
+        usernote: {
+            type: "group",
+            permissions: ["MODERATOR"],
+            description: "Add/Remove/View notes made, or make notes on Users.",
+            subcommands: {
+                add: {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod usernote add <user> <note>",
+                    examples: ["/mod usernote add @stinkyGoober This guy is really stinky"],
+                    description: "Add a note to a User."
+                },
+                remove: {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod usernote remove <noteId>",
+                    examples: [
+                        "/mod usernote remove 12",
+                        "/mod usernote remove 34,35,36,40,42,58"
+                    ],
+                    description: "Remove one or more notes, using note ID(s). Multiple removals = noteId seperated by comma."
+                },
+                view: {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod usernote view <user> <noteId>",
+                    examples: [
+                        "/mod usernote view @stinkyGoober",
+                        "/mod usernote view 12",
+                    ],
+                    description: "View notes on a specific User, or specific note using noteId."
+                },
+                "view-all": {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod usernote view-all",
+                    description: "View all notes currently stored in the database."
+                }
+            }
+        },
+        logs: {
+            type: "group",
+            permissions: ["MODERATOR"],
+            description: "Remove/View categorized Server Logs.",
+            subcommands: {
+                remove: {
+                    permissions: ["ADMIN"],
+                    usage: "/mod logs remove <noteId>",
+                    examples: [
+                        "/mod logs remove 12",
+                        "/mod logs remove 34,35,36,40,42,58"
+                    ],
+                    description: "Remove one or more logs, using log ID(s). Multiple removals = noteId seperated by comma."
+                },
+                view: {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod logs view <user> <affectedUser> <eventType> <detail> <detailValue> <limit> <logId> <archived>",
+                    examples: [
+                        "/mod logs view user:@stinkyGoober eventType:Member Join",
+                        "/mod logs view eventtype:Member Ban detail:Reason detailvalue:Stinky limit:50",
+                        "/mod logs view user:@randomModerator affectedUser:@stinkyGoober archived:True"
+                    ],
+                    description: "View filtered Server Logs using filters."
+                },
+                "view-all": {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod logs view-all <archived>",
+                    examples: [
+                        "/mod logs view-all",
+                        "/mod logs view-all true"
+                    ],
+                    description: "View all logs currently stored in the database."
+                },
+                archive: {
+                    permissions: ["ADMIN"],
+                    usage: "/mod logs archive",
+                    description: "Run the Server Logs Archival task NOW (instead of on its regular schedule)."
+                },
+                unarchive: {
+                    permissions: ["ADMIN"],
+                    usage: "/mod logs unarchive <logId>",
+                    examples: ["/mod logs unarchive 34"],
+                    description: "Pull an Archived Server Log back into the unarchived (this also resets its time-to-archive)!"
+                }
+            }
+        }
+    },
+    subcommands: {
+        ban: {
+            permissions: ["MODERATOR"],
+            usage: "/mod ban <user> <reason>",
+            examples: ["/mod ban @stinkyGoober Breaking rules"],
+            description: "Bans a user from the server."
+        },
+        unban: {
+            permissions: ["MODERATOR"],
+            usage: "/mod unban <userId>",
+            examples: ["/mod unban 123456789"],
+            description: "Unbans a user from the server."
+        },
+        kick: {
+            permissions: ["MODERATOR"],
+            usage: "/mod kick <user> <reason>",
+            examples: ["/mod kick @stinkyGoober Being annoying"],
+            description: "Kicks a user from the server."
+        },
+        timeout: {
+            permissions: ["MODERATOR"],
+            usage: "/mod timeout <user> <minutes> <reason>",
+            examples: ["/mod timeout @stinkyGoober 60 Spamming chat"],
+            description: "Timeout a user for the given duration (in minutes)."
+        },
+        untimeout: {
+            permissions: ["MODERATOR"],
+            usage: "/mod untimeout <user>",
+            examples: ["/mod untimeout @stinkyGoober"],
+            description: "Removes timeout given to specified user."
+        },
+    }
+}
+
 
 //export
 export default {
@@ -485,7 +613,7 @@ export default {
                 .addSubcommand(subcommand =>    
                     subcommand
                         .setName('view')
-                        .setDescription('View notes on a specific User.')
+                        .setDescription('View notes on a specific User, or specific note using noteId.')
                         .addUserOption(option => 
                             option
                                 .setName('user')
@@ -502,8 +630,7 @@ export default {
                         .setDescription('View all notes in existence ever.')
                 )
         )
-        //TODO: logs subcommand group
-        //STUB: maybe only the owner/admins can remove logs
+        //logs subcommand group
         .addSubcommandGroup(group =>
             group
                 .setName('logs')
@@ -594,7 +721,6 @@ export default {
                                 .setName('archived')
                                 .setDescription('View only Archived Logs (optional).'))
                 )
-                //TODO: make this for admins only
                 //archive logs subcommand
                 .addSubcommand(subcommand => 
                     subcommand
@@ -756,10 +882,11 @@ export default {
             }
         }
 
-        //TODO: logs subcommandGroup
+        //logs subcommandGroup
         if(subcommandGroup === "logs"){
             //logs remove subcommand
             if(subcommand === "remove"){
+                if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID)){ await interaction.editReply("You do not have permission to activate this command. If it is urgent, please contact an admin."); return }
                 handleSubcommandDBRemoval(interaction, "logid", "serverLog", getServerLogInDB, removeServerLogInDB)
             }
             //logs view subcommand
@@ -844,18 +971,28 @@ export default {
             }
             //logs archive subcommand
             if(subcommand === "archive"){
-                try{ 
-                    const archivalResult = await runServerLogArchivalTask()
-                    await interaction.editReply(`Server Logs Archival task has been executed manually.\nArchived: ${archivalResult.archived}\nDeleted: ${archivalResult.deleted}`)
-                }
-                catch(error){
-                    console.error("Error running Server Logs Archvial task: ", error)
-                    await interaction.editReply("Failed to run Server Logs Archival task! Please check the console for more info.")
+                if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID)){ await interaction.editReply("You do not have permission to activate this command. If it is urgent, please contact an admin."); return }
+                
+                //confirmation button before activating archival task
+                const confirmationMessage = await interaction.editReply({ content: "Are you sure you want to activate the Archival task *now*?", components: [booleanActionRow] })
+                const confirmationResult = await handleConfirmationMessage(confirmationMessage, interaction.user, subcommand)
+
+                if(confirmationResult === true){
+                    try{ 
+                        const archivalResult = await runServerLogArchivalTask()
+                        await interaction.editReply(`Server Logs Archival task has been executed manually.\nArchived: ${archivalResult.archived}\nDeleted: ${archivalResult.deleted}`)
+                    }
+                    catch(error){
+                        console.error("Error running Server Logs Archvial task: ", error)
+                        await interaction.editReply("Failed to run Server Logs Archival task! Please check the console for more info.")
+                    }
                 }
             }
             //logs unarchive subcommand
             if(subcommand === "unarchive"){
                 const logId = interaction.options.getString('logid')
+                if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID)){ await interaction.editReply("You do not have permission to activate this command. If it is urgent, please contact an admin."); return }
+                
                 try{
                     const isLogArchived = await getServerLogInDB(null, logId, null, null, null, null, true)
                     if(!isLogArchived){ await interaction.editReply("Provided LogID is not archived, please provide a valid archived Server Log to unarchive."); return }
@@ -890,12 +1027,14 @@ export default {
             if(!userArg){ interaction.editReply(`Please provide a valid User to ${subcommand}.`); return }
             if(!reasonArg){ interaction.editReply(`Please provide a reason for ${messageContext1} this User.`); return }
 
+            let dmMessage = `Heyo ${userArg}, \nYou have been ${messageContext2} from ${interaction.guild.name} for reason: "${reasonArg}". \n\nIf you believe this was a mistake, please contact one of the Admins of the above Server to assist in an appeal.`
             const confirmationMessage = await interaction.editReply({ content: `Do you want to ${subcommand} ${userArg} for "${reasonArg}"?`, components: [booleanActionRow] })
             const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, subcommand)
             
             if(confirmationResult === true){ 
                 try{ 
                     const guildMemberToRemove = await interaction.guild.members.fetch(userArg.id).catch(() => null)
+                    await guildMemberToRemove.send(dmMessage).catch(() => { console.log(`Error in DMing banned/kicked user reason for ban/kick.`) })
                     if(subcommand === "ban"){ await interaction.guild.members.ban(userArg, {reason: `${interaction.user.id} | ${reasonArg}`}) }
                     else if(subcommand === "kick"){ guildMemberToRemove.kick(`${interaction.user.id} | ${reasonArg}`) }
                     await interaction.editReply(`Successfully ${messageContext2} ${userArg} for "${reasonArg}".`) 

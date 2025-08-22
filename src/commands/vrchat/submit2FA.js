@@ -9,12 +9,21 @@ const vrc = new VRChatApi({
     authToken: config.authToken
 })
 
+//metadata
+export const commandMetadata = {
+    name: "submit2FA",
+    category: "VRChat",
+    permissions: ["ADMIN"],
+    usage: "/submit2fa <code>",
+    examples: ["/submit2fa 123456"],
+    description: "Submit new 2FA code for VRChat User."
+}
 
 //export
 export default {
     data: new SlashCommandBuilder()
         .setName('submit2fa')
-        .setDescription("Submit new 2FA for VRChat User.")
+        .setDescription("Submit new 2FA code for VRChat User.")
         .addStringOption(option => 
             option
                 .setName('2facode')
@@ -47,6 +56,7 @@ export default {
             if(result.data.verified){
                 console.log("New 2FA code submitted, please reboot.")
                 await interaction.editReply('New 2FA code submitted. Please reboot bot to complete reconnect!')
+                // process.exit(0)
             }
             else{ 
                 console.log("2FA code is incorrect, please try again.")

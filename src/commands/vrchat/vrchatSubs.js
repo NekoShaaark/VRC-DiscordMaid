@@ -124,12 +124,44 @@ export async function getVRCDataFromUrl(url){
     }
 }
 
+export const commandMetadata = {
+    name: "vrchat",
+    category: "VRChat",
+    type: "group",
+    description: "VRChat commands!!",
+    subcommands: {
+        profile: {
+            usage: "/vrchat profile <user>/<link> <short>",
+            examples: [
+                "/vrchat profile",
+                "/vrchat profile short:true",
+                "/vrchat profile @vrchatEnjoyer32",
+                "/vrchat profile https://vrchat.com/home/user/usr_123"
+            ],
+            description: "Get your VRChat profile, another user's profile, or any VRChat profile link."
+        },
+        link: {
+            usage: "/vrchat link <link>",
+            examples: ["/vrchat link https://vrchat.com/home/user/usr_123"],
+            description: "Link your VRChat profile to your Discord profile."
+        },
+        unlink: {
+            usage: "/vrchat unlink <user> <reason>",
+            examples: [
+                "/vrchat unlink",
+                "/vrchat unlink @vrchatEnjoyer32 Accidentally linked wrong account",
+                "/vrchat unlink https://vrchat.com/home/user/usr_123 Not in server anymore"
+            ],
+            description: "User to unlink the profile of, if not you. Only mods can specify a user or VRChat profile."
+        }
+    }
+}
 
 //export
 export default {
     data: new SlashCommandBuilder()
         .setName('vrchat')
-        .setDescription('something cool here')
+        .setDescription('VRChat commands!!')
         //profile subcommand
         .addSubcommand(subcommand => 
             subcommand

@@ -1,6 +1,13 @@
 //imports
 import { SlashCommandBuilder } from 'discord.js'
 
+//metadata
+export const commandMetadata = {
+    name: "ping",
+    category: "Utility",
+    usage: "/ping",
+    description: "Replies to the user's message with 'pong'."
+}
 
 //export
 export default {
