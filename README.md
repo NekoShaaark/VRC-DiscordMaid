@@ -6,7 +6,7 @@
 - [ ] Keep track of changes within' the Server _(stored in database, and copy of log on a Server channel)_ including: 
    - [x] Member joins/leaves/is kicked/is banned/is unbanned.
    - [x] Member has timeout applied or removed (and who applied/removed it, with how much time was applied/how much was left when it was removed).
-   - ~~[ ] Role change of a member (adding/removing, and who did it).~~ **<= not possible**
+   - [ ] ~~Role change of a member (adding/removing, and who did it).~~ **<= not possible**
    - [ ] Message is edited/deleted (with edited/deleted content). **<= might not need this**
    - [x] Invite is created/deleted (and who created/deleted it).
    - [x] VRChat profile is linked/unlinked (and who linked/unlinked the profile, including if a moderator unlinked it, with a reason).
@@ -34,6 +34,7 @@
 ## General
 - [x] Welcome new users with custom message(s). _eg. `Please give our newest guest, @username, a warm welcome.`_
 - [x] Help menu for all commands/subcommands, with categorizes, examples individual command info.
+- [ ] Info command to show basic bot credits.
 
 
 # Dependencies:

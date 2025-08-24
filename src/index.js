@@ -1,6 +1,5 @@
 //imports
 import dotenv from 'dotenv'
-import 'module-alias/register.js'
 import { readdirSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'

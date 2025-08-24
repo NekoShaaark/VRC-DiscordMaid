@@ -1,21 +1,17 @@
 {
   "name": "vrc-discordmaid",
-  "version": "0.6",
+  "version": "0.7",
   "description": "Discord bot for interacting with the VRChat API, Discord moderation and custom functions.",
   "license": "ISC",
   "author": "nekoshaaark",
   "type": "module",
   "main": "src/index.js",
-  "_moduleAliases": {
-    "@": "src"
-  },
   "dependencies": {
     "@kindlyfire/vrchatapi": "^0.0.3",
     "axios": "^1.9.0",
     "discord.js": "^14.19.3",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.43.1",
-    "module-alias": "^2.2.3",
     "node-cron": "^4.2.1",
     "pg": "^8.16.0"
   },
