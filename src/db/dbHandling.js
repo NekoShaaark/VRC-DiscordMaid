@@ -140,13 +140,19 @@ export async function getServerLogInDB(discordUserId, logId, affectedDiscordUser
         accountCreatedAt: 'string',
         timeoutLength: 'string',
         timeoutRemaining: 'string',
-        vrcUserId: 'string',
-        reason: 'string',
+        deletedMessage: 'string',
+        bulkDeleteMessagesFile: 'string',
+        bulkDeleteMessagesPreview: 'string',
+        bulkDeleteMessagesCount: 'number',
         inviteCode: 'string',
         inviteChannel: 'string',
         inviteMaxAge: 'string',
         inviteMaxUses: 'string',
-        inviteTemporary: 'string'
+        inviteTemporary: 'string',
+        vrcUserId: 'string',
+        usernote: 'string',
+        usernoteId: 'number',
+        reason: 'string',
     }
     let whereConditions = []
     let tableToFetchFrom = serverLogsTable
