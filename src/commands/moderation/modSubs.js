@@ -74,6 +74,8 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
     const timeoutLength = serverLogData?.details?.timeoutLength ?? null
     const timeoutRemaining = serverLogData?.details?.timeoutRemaining ?? null
     const logReason = serverLogData?.details?.reason ?? null
+    const editedMessageOriginal = serverLogData?.details?.editedMessageOriginal ?? null
+    const editedMessageEdit = serverLogData?.details?.editedMessageEdit ?? null
     const deletedMessageContent = serverLogData?.details?.deletedMessage ?? null
     const bulkDeleteMessagesFile = serverLogData?.details?.bulkDeleteMessagesFile ?? null
     const bulkDeleteMessagesPreview = serverLogData?.details?.bulkDeleteMessagesPreview ?? null
@@ -98,6 +100,8 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
             ...(timeoutLength ? [{ name: `Timeout Length`, value: `${timeoutLength}`, inline: true }] : []),
             ...(timeoutRemaining ? [{ name: `Timeout Remaining`, value: `${timeoutRemaining}`, inline: true }] : []),
             ...(logReason ? [{ name: `Reason`, value: `${logReason}`, inline: true }] : []),
+            ...(editedMessageOriginal ? [{ name: `Original Message`, value: `${editedMessageOriginal}`, inline: true }] : []),
+            ...(editedMessageEdit ? [{ name: `Edited Message`, value: `${editedMessageEdit}`, inline: true }] : []),
             ...(deletedMessageContent ? [{ name: `Deleted Message`, value: `${deletedMessageContent}`, inline: true }] : []),
             ...(bulkDeleteMessagesFile ? [{ name: `Deleted Messages File`, value: `${bulkDeleteMessagesFile}`, inline: true }] : []),
             ...(bulkDeleteMessagesPreview ? [{ name: `Preview`, value: `${bulkDeleteMessagesPreview}`, inline: true }] : []),
@@ -762,6 +766,7 @@ export default {
                                     { name: 'Member Ban', value: LogEventTypes.MEMBER_BAN },
                                     { name: 'Timeout Add', value: LogEventTypes.MEMBER_TIMEOUT_ADD },
                                     { name: 'Timeout Remove', value: LogEventTypes.MEMBER_TIMEOUT_REMOVE },
+                                    { name: 'Message Edited', value: LogEventTypes.MESSAGE_EDIT },
                                     { name: 'Message Deleted', value: LogEventTypes.MESSAGE_DELETE },
                                     { name: 'Messages Bulk Deleted', value: LogEventTypes.MESSAGE_DELETE_BULK },
                                     { name: 'Invite Created', value: LogEventTypes.INVITE_CREATE },
@@ -779,6 +784,8 @@ export default {
                                     { name: 'Timeout Length', value: 'timeoutLength' },
                                     { name: 'Timeout Remaining', value: 'timeoutRemaining' },
                                     { name: 'Deleted Message', value: 'deletedMessage' },
+                                    { name: 'Original Message', value: 'editedMessageOriginal' },
+                                    { name: 'Edited Message', value: 'editedMessageEdit' },
                                     { name: 'Bulk Deleted Messages File Name', value: 'bulkDeleteMessagesFile' },
                                     { name: 'Bulk Deleted Messages Preview', value: 'bulkDeleteMessagesPreview' },
                                     { name: 'Bulk Deleted Messages Amount', value: 'bulkDeleteMessagesCount' },

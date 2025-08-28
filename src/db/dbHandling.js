@@ -141,6 +141,8 @@ export async function getServerLogInDB(discordUserId, logId, affectedDiscordUser
         timeoutLength: 'string',
         timeoutRemaining: 'string',
         deletedMessage: 'string',
+        editedMessageOriginal: 'string',
+        editedMessageEdit: 'string',
         bulkDeleteMessagesFile: 'string',
         bulkDeleteMessagesPreview: 'string',
         bulkDeleteMessagesCount: 'number',

@@ -153,6 +153,10 @@ export const commandMetadata = {
                 "/vrchat unlink https://vrchat.com/home/user/usr_123 Not in server anymore"
             ],
             description: "User to unlink the profile of, if not you. Only mods can specify a user or VRChat profile."
+        },
+        "group-join": {
+            usage: "/vrchat group-join",
+            description: "Information on how to join this server's VRChat Group."
         }
     }
 }
@@ -200,6 +204,11 @@ export default {
                     option
                         .setName('reason')
                         .setDescription("Reason for unlinking this user's profile (Mods only)."))
+        )
+        .addSubcommand(subcommand => 
+            subcommand
+                .setName('group-join')
+                .setDescription("Information on how to join this server's VRChat Group.")
         ),
     cooldown: 15,
 
@@ -208,6 +217,25 @@ export default {
         const subcommand = interaction.options.getSubcommand()
         const userInteraction = interaction.user
         await interaction.deferReply()
+
+        //group-join subcommand
+        if(subcommand === "group-join"){
+            const groupJoinEmbed = new EmbedBuilder()
+                .setColor('Greyple')
+                .setTitle('Joining the VRChat Group')
+                .addFields(
+                    { name: '', value: 
+                        'To join the Group you can:\n' + 
+                        '- Join through [the VRChat website](https://vrc.group/THECON.5065).\n' +
+                        '- Search for **THECON.5065** in-game, or on the VRChat website.\n' +
+                        '   - To do this, follow these steps: Menu > Groups > Find a Group > Enter "**THECON.5065**".\n' +
+                        'To join group event instances, you will need to join the above group.'
+                    }
+                )
+
+            await interaction.editReply({ content: "", embeds: [groupJoinEmbed] })
+            return
+        }
 
         //if a new 2FA code is submitted, reboot is required to overcome this
         if(config.new2faCodeNeeded){

@@ -3,10 +3,10 @@
 ## Logging
 - [x] Fetch/filter all logs of a specific User/Affected User/Event Type/Details _(messages or actions that User did)_.
 - [x] Archive old logs every x months, then delete those "archived" logs after x months _(can "unarchive" and view logs if wanted)_.
-- [ ] Keep track of changes within' the Server _(stored in database, and copy of log on a Server channel)_ including: 
+- [x] Keep track of changes within' the Server _(stored in database, and copy of log on a Server channel)_ including: 
    - [x] Member joins/leaves/is kicked/is banned/is unbanned.
    - [x] Member has timeout applied or removed (and who applied/removed it, with how much time was applied/how much was left when it was removed).
-   - [ ] Message is edited/deleted/mass-deleted (with edited/deleted content (mass-deleted has file attachment)).
+   - [X] Message is edited/deleted/mass-deleted (with edited/deleted content (mass-deleted has file attachment, and are deleted when related log is removed)).
    - [x] Invite is created/deleted (and who created/deleted it).
    - [x] VRChat profile is linked/unlinked (and who linked/unlinked the profile, including if a moderator unlinked it, with a reason).
    - [x] User Note is deleted (and who deleted it).
@@ -20,12 +20,12 @@
    - [x] `/vrchat profile https://vrchat.com/home/user/usr_123` to view a user's VRChat account via link.
    - [x] `/vrchat profile vrchatUsername` to view a user's VRChat via plain text username/displayName.
 - [ ] Capabilities of changing a VRChat member's roles witin' the Server's Group.
-- [ ] _(optional)_ Remove VRChat member from Server's Group.
-- [ ] Send invite link to in-game Group _(need more info on this)_.
+- [ ] Remove VRChat member from Server's Group.
+- [x] `/vrchat group-join` slash-command for info on joining the VRChat Group.
 
 ## Moderation
 - [x] Kick/ban/timeout any user with reason _(then send message in logging channel)_.
-   - [x] _(optional)_ DM reason for ban/kick to banned/kicked user.
+   - [x] Send DM with reason for ban/kick to banned/kicked user.
 - [x] Add/Remove/View notes on specified users including:
    - [x] Mass-remove notes via array of Note IDs.
    - [x] Log notes into logging channel.
