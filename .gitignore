@@ -4,3 +4,4 @@ node_modules
 drizzle/meta/
 .env
 config.json
+src/misc/deletedBulkMessages/*

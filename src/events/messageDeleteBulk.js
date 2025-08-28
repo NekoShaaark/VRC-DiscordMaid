@@ -39,13 +39,13 @@ export default {
         
         //fetch audit logs, and check who bulk deleted
         try{
-            const auditLog = await messages.first().guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MessageBulkDelete })
-            const fetchedAuditLog = auditLog.entries.first()
-
             const formattedDeletedMessages = messages.map(m => `[${m.createdAt.toISOString()}] ${m.author?.tag || "Unknown"}: ${m.content || "[no content]"}`).join("\n")
             const deletedMessagesPreview = formattedDeletedMessages.split("\n").slice(0, 4).join("\n")
             const deletedMessagesFile = await generateBulkLogFilename()
             fs.writeFileSync(deletedMessagesFile.filePath, formattedDeletedMessages)
+            
+            const auditLog = await messages.first().guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MessageBulkDelete })
+            const fetchedAuditLog = auditLog.entries.first()
             
             const fileAttachment = new AttachmentBuilder(deletedMessagesFile.filePath, { name: `bulkDelete${deletedMessagesFile.index}.txt` })
             const newLog = await createServerLogInDB(fetchedAuditLog.executor.id, null, LogEventTypes.MESSAGE_DELETE_BULK, { 

@@ -151,13 +151,22 @@ async function handlePageEmbed(interaction, array, removeMultipleNotes, embedTyp
     else if(embeds.length >= 5){ row.addComponents(superLeftButton, leftButton, rightButton, superRightButton) }
     else{ await interaction.editReply({ content: "", embeds: [embeds[0]] }); return }
 
-    //send first page embed
-    const message = await interaction.editReply({
+    //add file attachment for first page embed, if exists
+    let firstEmbedOptions = { 
         content: "",
-        embeds: [embeds[currentIndex]],
+        embeds: [embeds[currentIndex]], 
         components: [row],
+        files: [],
         fetchReply: true
-    })
+    }
+    const firstDeletedFileField = embeds[currentIndex].data.fields.find(f => f.name === 'Deleted Messages File')
+    if(firstDeletedFileField){
+        const fileName = firstDeletedFileField?.value //bulkDelete12.txt
+        await handleFileAttachmentAdding(fileName, firstEmbedOptions)
+    }
+
+    //send first page embed
+    const message = await interaction.editReply(firstEmbedOptions)
     currentComponents = message.components
     
     //run button handler (collector)
@@ -173,19 +182,16 @@ async function handlePageEmbed(interaction, array, removeMultipleNotes, embedTyp
         //send updated page embed, if index is updated (button is pressed)
         if(newIndex !== currentIndex){
             currentIndex = newIndex
-            let options = { embeds: [embeds[currentIndex]], files: [] }
-            let fileName
-            let filePath
+            let embedOptions = { embeds: [embeds[currentIndex]], files: [] }
 
             //this name is the same as the field name in the createServerEmbed() function
             const deletedFileField = embeds[currentIndex].data.fields.find(f => f.name === 'Deleted Messages File')
             if(deletedFileField){
-                fileName = deletedFileField?.value //bulkDelete12.txt
-                filePath = path.resolve(__dirname, "../../misc/deletedBulkMessages", fileName)
-                if(fs.existsSync(filePath)){ options.files = [new AttachmentBuilder(filePath)] } //attach file to message, if exists
+                const fileName = deletedFileField?.value //bulkDelete12.txt
+                await handleFileAttachmentAdding(fileName, embedOptions)
             }
 
-            await i.update(options)
+            await i.update(embedOptions)
         }
         else{ await i.deferUpdate() }
     })
@@ -245,6 +251,10 @@ async function handleMassDBEntryRemoval(interaction, embedMessage, array, delete
             })
             await serverLogLogger(interaction, newLog)
         }
+
+        //delete bulkDeletionMessageFile, if exists
+        const deletedFileField = item?.details?.bulkDeleteMessagesFile ?? null
+        if(deletedFileField){ await removeBulkDeletionMessageFile(deletedFileField) }
         
         const entryId = item[messageContext]
         const entryRemoved = await deleteFunction(entryId)
@@ -257,7 +267,7 @@ async function handleMassDBEntryRemoval(interaction, embedMessage, array, delete
     const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
     if(removedEntries.length >= 2){ messageContext += "s" }
 
-    await embedMessage.edit({ content: `Successfully deleted ${messageContext} ${removedEntriesMessage}.`, embeds: [], components: [] })
+    await embedMessage.edit({ content: `Successfully deleted ${messageContext} ${removedEntriesMessage}.`, embeds: [], components: [], files: [] })
     await loggingChannel.send({ content: `<@${interaction.user.id}> successfully deleted ${messageContext} ${removedEntriesMessage}.`, embeds: [], components: [] })
 }
 
@@ -359,7 +369,6 @@ async function getTimeRemainingString(targetIsoString) {
     return `${minutesRemaining} minutes${await convertMinutesToString(minutesRemaining)}`
 }
 
-//REVIEW: when removing usernotes and logs, the removal order is sometimes wrong
 async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcommandGroup, getFromDBFunction, removeFromDBFunction){
     const entryIdArg = interaction.options.getString(subcommandIdArg)
     let removeMultipleEntries = false
@@ -383,29 +392,25 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
     //multi-note removal
     if(entryIdArg.includes(",")){ 
         removeMultipleEntries = true
-        const entryIdArray = entryIdArg.split(",")
-        const seenEntryIds = new Set()
+        const entryIdArray = entryIdArg.split(",").map(id => id.trim())
         const uniqueEntryIds = [...new Set(entryIdArray)]
         let invalidEntriesArray = []
         let embedMessageContent = `**Do you want to remove these ${subcommandMessageContext}s?**`
         if(entryIdArray.includes("")){ await interaction.editReply(`Argument contains invalid number. Please provide only valid ${subcommandMessageContext} IDs.`); return }
         
-        //map through all provided entries
-        await Promise.all(uniqueEntryIds.map(async (entryId) => {
-            foundEntry = await getFromDBFunction(null, entryId)
-            if(!foundEntry){ //invalid entries
+        //loop through all provided entries
+        for(const entryId of uniqueEntryIds) {
+            const foundEntry = await getFromDBFunction(null, entryId)
+            if(!foundEntry || isNaN(Number(entryId))){ //invalid entries
                 invalidEntriesArray.push(entryId)
                 invalidEntriesArrayMessage += `${entryId}, `
-                return 
+                continue
             }
-            //skip if duplicate
-            if(seenEntryIds.has(foundEntry)){ return }
-            
+
             //valid entries
-            seenEntryIds.add(foundEntry[subcommandMessageContextId])
             foundEntriesArray.push(foundEntry)
             entriesArrayMessage += `${foundEntry[subcommandMessageContextId]}, `
-        }))
+        }
         
         //handle invalid notes
         if(!foundEntriesArray[0]){ await interaction.editReply(`None of these ${subcommandMessageContext} IDs exist, please provide valid ${subcommandMessageContext} IDs to remove.`); return }
@@ -417,34 +422,47 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
             if(invalidEntriesArray.length >= 2){ embedMessageContent = `These ${subcommandMessageContext} IDs don't exist: ${invalidEntriesArrayMessage}.\n **Do you want to remove ${foundNotesMessageContext} instead?**` }
             else{ embedMessageContent = `${subcommandMessageContext} ID ${invalidEntriesArrayMessage} does not exist.\n**Do you want to remove ${foundNotesMessageContext} instead?**` }
         }
+
+        //create embedOptions object
+        let embedOptions = { 
+            content: embedMessageContent,
+            components: [], 
+            files: [] 
+        }
         
         //create paged embed, then edit embed to have yes/no buttons
         await handlePageEmbed(interaction, foundEntriesArray, removeMultipleEntries, subcommandGroup)
         entriesArrayMessage = await formatEntriesArrayMessage(foundEntriesArray, subcommandMessageContextId, entriesArrayMessage)
-        let newMessageComponents
-        if(currentComponents){ newMessageComponents = [...currentComponents, booleanActionRow] }
-        else{ newMessageComponents = [booleanActionRow] }
+        if(currentComponents){ embedOptions.components = [...currentComponents, booleanActionRow] }
+        else{ embedOptions.components = [booleanActionRow] }
         
-        embedMessage = await interaction.editReply({
-            content: embedMessageContent,
-            components: newMessageComponents
-        })
+        //add file attachment, if exists
+        const deletedFileField = foundEntry?.details?.bulkDeleteMessagesFile ?? null
+        await handleFileAttachmentAdding(deletedFileField, embedOptions)
+        
+        embedMessage = await interaction.editReply(embedOptions)
     }
 
     //check if singular note exists
     else{
-        let entryEmbed
         foundEntry = await getFromDBFunction(null, entryIdArg)
         if(!foundEntry){ interaction.editReply(`This ${subcommandMessageContext} ID does not exist.`); return }
         
         //create embed for subcommandGroup
-        if(subcommandGroup == "userNote"){ entryEmbed = await createUserNoteEmbed(foundEntry, "view") }
-        else if(subcommandGroup == "serverLog"){ entryEmbed = await createServerLogEmbed(interaction, foundEntry, "view") }
-        embedMessage = await interaction.editReply({
+        let embedOptions = { 
             content: `**Are you sure you want to remove this ${subcommandMessageContext}?**`,
-            embeds: [entryEmbed],
-            components: [booleanActionRow]
-        })
+            embeds: [],
+            components: [booleanActionRow], 
+            files: [] 
+        }
+        if(subcommandGroup == "userNote"){ embedOptions.embeds = [await createUserNoteEmbed(foundEntry, "view")] }
+        else if(subcommandGroup == "serverLog"){ embedOptions.embeds = [await createServerLogEmbed(interaction, foundEntry, "view")] }
+        
+        //add file attachment, if exists
+        const deletedFileField = foundEntry?.details?.bulkDeleteMessagesFile ?? null
+        await handleFileAttachmentAdding(deletedFileField, embedOptions)
+
+        embedMessage = await interaction.editReply(embedOptions)
     }
     
     //run button handler (collector)
@@ -453,12 +471,13 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
     collector.on('collect', async i => {
         if(!removeMultipleEntries){ await i.deferUpdate() }
         if(i.customId === 'noButton'){
-            if(removeMultipleEntries){ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId}s ${entriesArrayMessage}.`, embeds: [], components: [] }) }
-            else{ await i.editReply({ content: `Cancelled removing ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [] }) }
+            if(removeMultipleEntries){ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId}s ${entriesArrayMessage}.`, embeds: [], components: [], files: [] }) }
+            else{ await i.editReply({ content: `Cancelled removing ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [], files: [] }) }
             return
         }
         else if(i.customId === 'yesButton'){
             try{ 
+                //remove multiple notes from database
                 if(removeMultipleEntries){
                     handleMassDBEntryRemoval(interaction, embedMessage, foundEntriesArray, removeFromDBFunction, subcommandMessageContextId)
                     return
@@ -477,24 +496,46 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
                             })
                             await serverLogLogger(interaction, newLog)
                         }
+                        //remove bulkDeleteMessageFile if exists
+                        if(foundEntry.details.bulkDeleteMessagesFile){ await removeBulkDeletionMessageFile(foundEntry.details.bulkDeleteMessagesFile) }
                     }
                 }
             }
             catch(error){ 
                 console.error(error)
-                if(removeMultipleEntries){ await embedMessage.edit({ content: `There was an error deleting ${subcommandMessageContextId}s ${entriesArrayMessage}, please try again or contact the owner.`, embeds: [], components: [] }) }
-                else{ await i.editReply({ content: `There was an error deleting ${subcommandMessageContextId} ${entryIdArg}, please try again or contact the owner.`, embeds: [], components: [] }) }
+                if(removeMultipleEntries){ await embedMessage.edit({ content: `There was an error deleting ${subcommandMessageContextId}s ${entriesArrayMessage}, please try again or contact the owner.`, embeds: [], components: [], files: [] }) }
+                else{ await i.editReply({ content: `There was an error deleting ${subcommandMessageContextId} ${entryIdArg}, please try again or contact the owner.`, embeds: [], components: [], files: [] }) }
             }
         }
     })
     //on collector timer's end
     collector.on('end', async (collected) => {
         if(collected.size === 0){ 
-            if(removeMultipleEntries){ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId}s ${entriesArrayMessage}.`, embeds: [], components: [] }) }
-            else{ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [] }) }
+            if(removeMultipleEntries){ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId}s ${entriesArrayMessage}.`, embeds: [], components: [], files: [] }) }
+            else{ await embedMessage.edit({ content: `Cancelled removing ${subcommandMessageContextId} ${entryIdArg}.`, embeds: [], components: [], files: [] }) }
         }
         return
     })
+}
+
+async function handleFileAttachmentAdding(deletedFileField, embedOptionsObject){
+    //add file attachment, if exists
+    if(deletedFileField){
+        let filePath = path.resolve(__dirname, "../../misc/deletedBulkMessages", deletedFileField)
+        if(fs.existsSync(filePath)){ embedOptionsObject.files = [new AttachmentBuilder(filePath)] }
+    }
+}
+
+export async function removeBulkDeletionMessageFile(fileName){
+    const filePath = path.resolve(__dirname, "../../misc/deletedBulkMessages", fileName)
+    try{ 
+        await fs.promises.unlink(filePath)
+        console.log("Removed Bulk Deletion Message File:", fileName)
+    }
+    catch(error){
+        if(error.code === "ENOENT"){ console.error("File not found:", filePath) } 
+        else{ console.error("Error deleting file:", error) }
+    }
 }
 
 //metadata
@@ -883,6 +924,7 @@ export default {
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages), //STUB: maybe change this
     cooldown: 8,
 
+    //TODO: add check for if user has moderator or admin permission
     //runs the command
     async execute(interaction) {
         const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
@@ -969,7 +1011,16 @@ export default {
                     
                     //send server log embed
                     let serverLogEmbed = await createServerLogEmbed(interaction, foundServerLog, "view")
-                    await interaction.editReply({ content: "", embeds: [serverLogEmbed] }) //flags: MessageFlags.Ephemeral 
+                    let embedOptions = { 
+                        content: "",
+                        embeds: [serverLogEmbed],
+                        files: []
+                    }
+
+                    //add file attachment, if exists, then send serverLogEmbed
+                    const deletedFileField = foundServerLog?.details?.bulkDeleteMessagesFile ?? null
+                    await handleFileAttachmentAdding(deletedFileField, embedOptions)
+                    await interaction.editReply(embedOptions) //flags: MessageFlags.Ephemeral 
                     return
                 }
 

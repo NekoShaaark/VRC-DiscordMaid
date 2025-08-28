@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { eq, lt } from 'drizzle-orm'
+import { eq, lt, sql } from 'drizzle-orm'
 import { serverLogsTable, archivedServerLogsTable } from './schema.js'
+import { removeBulkDeletionMessageFile } from '../commands/moderation/modSubs.js'
 
 const db = drizzle(process.env.DATABASE_URL)
 
@@ -17,7 +18,8 @@ export async function runServerLogArchivalTask(){
     const oldLogs = await db
         .select()
         .from(serverLogsTable)
-        .where(lt(serverLogsTable.createdAt, archiveCutoff))
+        //use restoredAt if it exists, otherwise fall back to createdAt
+        .where(lt(sql`COALESCE(${serverLogsTable.restoredAt}, ${serverLogsTable.createdAt})`, archiveCutoff))
 
     if(oldLogs.length > 0){
         const mappedLogs = oldLogs.map(log => ({
@@ -26,18 +28,37 @@ export async function runServerLogArchivalTask(){
         }))
 
         await db.insert(archivedServerLogsTable).values(mappedLogs)
-        await db.delete(serverLogsTable).where(lt(serverLogsTable.createdAt, archiveCutoff))
+        await db.delete(serverLogsTable).where(lt(sql`COALESCE(${serverLogsTable.restoredAt}, ${serverLogsTable.createdAt})`, archiveCutoff))
     }
 
-    //delete expired logs from archive table
-    const deletedResult = await db
-        .delete(archivedServerLogsTable)
-        .where(lt(archivedServerLogsTable.archivedAt, deleteCutoff))
-        .returning({ id: archivedServerLogsTable.id })
+    const archivedLogsToDelete = await db
+    .select()
+    .from(archivedServerLogsTable)
+    .where(lt(archivedServerLogsTable.archivedAt, deleteCutoff))
+    
+    //remove related bulkDeleteMessageFile if exists
+    if(archivedLogsToDelete.length > 0){
+        
+        //delete bulk deletion file related to archived logs
+        for(const log of archivedLogsToDelete){
+            if(log.details?.bulkDeleteMessagesFile){ await removeBulkDeletionMessageFile(log.details.bulkDeleteMessagesFile) }
+        }
+        
+        //delete expired logs from archive
+        const deletedResult = await db
+            .delete(archivedServerLogsTable)
+            .where(lt(archivedServerLogsTable.archivedAt, deleteCutoff))
+            .returning({ id: archivedServerLogsTable.id })
+
+        return {
+            archived: oldLogs.length,
+            deleted: deletedResult.length
+        }
+    }
 
     return {
         archived: oldLogs.length,
-        deleted: deletedResult.length
+        deleted: 0
     }
 }
 
