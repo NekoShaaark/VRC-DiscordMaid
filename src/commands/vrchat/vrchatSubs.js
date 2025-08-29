@@ -1,5 +1,5 @@
 //imports
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder } from 'discord.js'
 import { getUserInDB, removeUserInDB, createUserInDB, createServerLogInDB } from '../../db/dbHandling.js'
 import { getConfig } from '../../configManager.js'
 import { getVRC } from '../../vrchatClient.js'
@@ -46,8 +46,8 @@ async function formatStatus(userStatus){
     }
     //blank handling
     return {
-        vrcStatus: userStatus, 
-        color: Blurple 
+        vrcStatus: userStatus,
+        color: "Blurple"
     }
 }
 
@@ -61,7 +61,7 @@ async function determineUserTrustRank(userTags){
         }, {})
     let highestPriority = -1
     let highestRank = "Visitor" //default, if no trust tags found
-        
+    
     for(const tag of userTags){
         if(trustPriorities.hasOwnProperty(tag)){
             const priority = trustPriorities[tag]
@@ -74,8 +74,92 @@ async function determineUserTrustRank(userTags){
     return highestRank.charAt(0) + highestRank.slice(1).toLowerCase()
 }
 
+async function formatGroupRoles(userRoleIds){
+    const groupData = await vrc.groups.get(process.env.VRC_GROUP_ID, true)
+    const groupRolesData = groupData.data.roles
+
+    //NOTE: if bot role changes, change the vrc_group_bot_id in .env to match new group role id
+    const botRole = groupRolesData.find(roleToFind => roleToFind.id === process.env.VRC_GROUP_BOT_ID)
+    const manageableRoles = groupRolesData.filter(role => role.order > botRole.order)
+
+    //map through all roles the bot can manage (all roles below itself) into an object for the selectMenu component
+    const rolesNamesObject = manageableRoles.map(role => {
+        let option = {
+            label: role.name,
+            value: role.id
+        }
+        if(role.description != "" && role.description){ option.description = role.description }
+        return option
+    })
+
+    const rolesNameString = groupRolesData
+        .filter(role => userRoleIds.includes(role.id)) //keep only matching ids
+        .map(role => role.name)                        //grab just the role name
+        .join("\n") || "*No roles.*"                   //join with newlines
+
+    return { rolesNameString, rolesNamesObject }
+}
+
+export async function findVRCUserDataFromProfile(interaction, profileArg, userGetType){
+    //determine which method to find user, based on targetUser input
+    //discord mention
+    if(profileArg.slice(0,2) == "<@"){ 
+        const mentionedUserId = profileArg.slice(2, -1)
+        const userInDb = await getUserInDB(mentionedUserId, null)
+        if(!userInDb){
+            await interaction.editReply("That user has not linked their VRChat profile to their Discord account. \nTo link your accounts, use the `/vrchat link` command.")
+            return null
+        }
+        //return groupMember userdata
+        if(userGetType == "groupMember"){
+            const groupMember = await vrc.groups.getMember(process.env.VRC_GROUP_ID, userInDb.vrcUserId)
+            return groupMember.data
+        }
+        
+        const foundUser = await vrc.users.get(userInDb.vrcUserId)
+        return foundUser.data
+    }
+    
+    //vrchat profile link
+    else if(profileArg.slice(0,29) == "https://vrchat.com/home/user/"){
+        const vrcUserId = profileArg.slice(29)
+
+        //return groupMember userdata
+        if(userGetType == "groupMember"){
+            const groupMember = await vrc.groups.getMember(process.env.VRC_GROUP_ID, vrcUserId)
+            return groupMember.data
+        }
+
+        //return normal userdata
+        const foundUser = await vrc.users.get(vrcUserId)
+        if(!foundUser){
+            await interaction.editReply("Invalid VRChat profile link given, please provide a valid link.")
+            return null
+        }
+        return foundUser.data
+    }
+    
+    //plain text vrchat username/displayName
+    else{
+        const foundUsers = await vrc.users.search(profileArg)
+        if(!foundUsers.data[0]){
+            await interaction.editReply("No VRChat users found containing that name.")
+            return null
+        }
+
+        //return groupMember userdata
+        if(userGetType == "groupMember"){
+            const groupMember = await vrc.groups.getMember(process.env.VRC_GROUP_ID, foundUsers.data[0].id)
+            return groupMember.data
+        }
+
+        //return normal userdata
+        return foundUsers.data[0]
+    }
+}
+
 export async function createVRCUserEmbed(foundUserData, shortOption){
-    const foundUserObject = {
+    let foundUserObject = {
         displayName: await foundUserData.displayName,
         status: await formatStatus(await foundUserData.status),
         trustLevel: await determineUserTrustRank(await foundUserData.tags),
@@ -84,9 +168,11 @@ export async function createVRCUserEmbed(foundUserData, shortOption){
         userIcon: await foundUserData.userIcon,
         userId: await foundUserData.id
     }
+    if(foundUserObject.statusText === ""){ foundUserObject.statusText = "*No status text.*" }
+    if(foundUserObject.bio === ""){ foundUserObject.bio = "*No bio.*" }
     
     const foundUserEmbed = new EmbedBuilder()
-        .setColor(foundUserObject.status.color)
+        .setColor(`${foundUserObject.status.color}`)
         .setTitle(`VRChat User: ${foundUserObject.displayName}`)
         .addFields(
             { name: "Status", value: `**${foundUserObject.status.vrcStatus}**`, inline: true },
@@ -110,6 +196,59 @@ export async function createVRCUserEmbed(foundUserData, shortOption){
     return{ foundUserEmbed, vrcActionRow }
 }
 
+export async function createVRCGroupMemberEmbed(interaction, groupMemberData, setDisabled){
+    const foundUserData = await findVRCUserDataFromProfile(interaction, `https://vrchat.com/home/user/${groupMemberData.userId}`)
+    let foundUserObject = {
+        displayName: foundUserData.displayName,
+        status: await formatStatus(await foundUserData.status),
+        trustLevel: await determineUserTrustRank(await foundUserData.tags),
+        statusText: foundUserData.statusDescription,
+        bio: foundUserData.bio,
+        userIcon: foundUserData.userIcon,
+        userId: foundUserData.id
+    }
+    if(foundUserObject.statusText === ""){ foundUserObject.statusText = "*No status text.*" }
+    if(foundUserObject.bio === ""){ foundUserObject.bio = "*No bio.*" }
+    const groupRoles = await formatGroupRoles(groupMemberData.roleIds)
+    
+    const groupMemberEmbed = new EmbedBuilder()
+        .setColor(`${foundUserObject.status.color}`)
+        .setTitle(`VRChat Group Member: ${foundUserObject.displayName}`)
+        .addFields(
+            { name: "Status", value: `**${foundUserObject.status.vrcStatus}**`, inline: true },
+            { name: "Trust Level", value: `**${foundUserObject.trustLevel}**`, inline: true },
+            { name: "Status Text", value: `${foundUserObject.statusText}`, inline: true },
+            { name: "Group Roles", value: `${groupRoles.rolesNameString}` }
+        )
+        .setFooter({ text: `${foundUserObject.displayName}`,
+            //add icon to footer if it exists
+            ...(foundUserObject.userIcon && foundUserObject.userIcon !== "" ? { iconURL: foundUserObject.userIcon } : {}) })
+        .setTimestamp()
+
+    //role change select menu and kick/ban buttons at bottom of embed message
+    const roleSelect = new StringSelectMenuBuilder()
+        .setCustomId('vrcRoles')
+        .setPlaceholder('Select roles to Add/Remove')
+        .addOptions(groupRoles.rolesNamesObject)
+        .setDisabled(setDisabled)
+    const vrcKick = new ButtonBuilder()
+        .setCustomId('vrcKick')
+        .setLabel('Kick')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(setDisabled)
+    const vrcBan = new ButtonBuilder()
+        .setCustomId('vrcBan')
+        .setLabel('Ban')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(setDisabled)
+    const vrcActionRow1 = new ActionRowBuilder()
+        .addComponents(roleSelect)
+    const vrcActionRow2 = new ActionRowBuilder()
+        .addComponents(vrcKick, vrcBan)
+
+    return{ groupMemberEmbed, vrcActionRow1, vrcActionRow2 }
+}
+
 export async function getVRCDataFromUrl(url){ 
     if(url.slice(0,29) == "https://vrchat.com/home/user/"){
         try{ 
@@ -131,11 +270,12 @@ export const commandMetadata = {
     description: "VRChat commands!!",
     subcommands: {
         profile: {
-            usage: "/vrchat profile <user>/<link> <short>",
+            usage: "/vrchat profile <user>/<link>/<username> <short>",
             examples: [
                 "/vrchat profile",
                 "/vrchat profile short:true",
                 "/vrchat profile @vrchatEnjoyer32",
+                "/vrchat profile VRChatEnjoyer",
                 "/vrchat profile https://vrchat.com/home/user/usr_123"
             ],
             description: "Get your VRChat profile, another user's profile, or any VRChat profile link."
@@ -205,6 +345,7 @@ export default {
                         .setName('reason')
                         .setDescription("Reason for unlinking this user's profile (Mods only)."))
         )
+        //group-join subcommand
         .addSubcommand(subcommand => 
             subcommand
                 .setName('group-join')
@@ -253,39 +394,8 @@ export default {
             if(profileArg){
                 await interaction.editReply(`Finding ${profileArg}'s VRChat profile...`)
                 try{
-                    //determine which method to find user, based on targetUser input
-                    //discord mention
-                    if(profileArg.slice(0,2) == "<@"){ 
-                        const mentionedUserId = profileArg.slice(2, -1)
-                        const userInDb = await getUserInDB(mentionedUserId, null)
-                        if(!userInDb){
-                            await interaction.editReply("That user has not linked their VRChat profile to their Discord account. \nTo link your accounts, use the `/vrchat link` command.")
-                            return
-                        }
-                        const foundUsers = await vrc.users.get(userInDb.vrcUserId)
-                        foundUser = await foundUsers.data
-                    }
-    
-                    //vrchat profile link
-                    else if(profileArg.slice(0,29) == "https://vrchat.com/home/user/"){
-                        const vrcUserId = profileArg.slice(29)
-                        const foundUsers = await vrc.users.get(vrcUserId)
-                        if(!foundUsers){
-                            await interaction.editReply("Invalid VRChat profile link given, please provide a valid link.")
-                            return
-                        }
-                        foundUser = await foundUsers.data
-                    }
-    
-                    //plain text vrchat username/displayName
-                    else{
-                        const foundUsers = await vrc.users.search(profileArg)
-                        if(!foundUsers){
-                            await interaction.editReply("No VRChat users found containing that name.")
-                            return
-                        }
-                        foundUser = await foundUsers.data[0]
-                    }
+                    foundUser = await findVRCUserDataFromProfile(interaction, profileArg)
+                    if(!foundUser){ return }
                 
                     //send embed with profile link button
                     const createdVRCUserEmbed = await createVRCUserEmbed(foundUser, shortOrLong)

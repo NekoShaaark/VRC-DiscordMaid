@@ -19,8 +19,8 @@
    - [x] `/vrchat profile @discordUsername` to view a user's linked VRChat account _(if pinged user has linked thier accounts)_.
    - [x] `/vrchat profile https://vrchat.com/home/user/usr_123` to view a user's VRChat account via link.
    - [x] `/vrchat profile vrchatUsername` to view a user's VRChat via plain text username/displayName.
-- [ ] Capabilities of changing a VRChat member's roles witin' the Server's Group.
-- [ ] Remove VRChat member from Server's Group.
+- [x] Capabilities of changing (adding/removing) a VRChat member's roles witin' the Server's Group.
+- [x] Kick/ban VRChat member from Server's Group.
 - [x] `/vrchat group-join` slash-command for info on joining the VRChat Group.
 
 ## Moderation

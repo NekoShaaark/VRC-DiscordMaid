@@ -5,11 +5,14 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { ActionRowBuilder, AttachmentBuilder, AuditLogEvent, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, time, TimestampStyles } from 'discord.js'
 import { createServerLogInDB, createUserNoteInDB, getAllArchivedServerLogsInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
+import { getVRC } from '../../vrchatClient.js'
 import LogEventTypes from '../../misc/logEventTypes.js'
 import { serverLogLogger } from '../../misc/serverLogLogger.js'
 import { runServerLogArchivalTask, unarchiveServerLog } from '../../db/serverLogArchival.js'
+import { createVRCGroupMemberEmbed, findVRCUserDataFromProfile } from '../vrchat/vrchatSubs.js'
 dotenv.config()
 
+const vrc = await getVRC()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -664,6 +667,16 @@ export const commandMetadata = {
             examples: ["/mod untimeout @stinkyGoober"],
             description: "Removes timeout given to specified user."
         },
+        "group-user": {
+            permissions: ["MODERATOR"],
+            usage: "/mod group-user <user>/<link>/<username>",
+            examples: [
+                "/mod group-user @vrchatEnjoyer32",
+                "/mod group-user VRChatEnjoyer32",
+                "/mod group-user https://vrchat.com/home/user/usr_123"
+            ],
+            description: "Add/remove VRChat Group member's role, or kick/ban said-member."
+        }
     }
 }
 
@@ -851,7 +864,12 @@ export default {
         .addSubcommand(subcommand => 
             subcommand
                 .setName('group-user')
-                .setDescription("Get user's VRChat profile in Group.")
+                .setDescription("Add/remove VRChat Group member's role, or kick/ban said-member.")
+                .addStringOption(option => 
+                    option
+                        .setName('profile')
+                        .setDescription('Discord mention, VRChat profile link, or VRChat username.')
+                        .setRequired(true))
         )
         //ban subcommand
         .addSubcommand(subcommand => 
@@ -1124,6 +1142,112 @@ export default {
                     await interaction.editReply(`There was an error restoring ${logId}. Please check the console for more info.`)
                 }
             }
+        }
+
+        //group-user subcommand
+        if(subcommand === "group-user"){
+            let foundGroupMember
+            const profileArg = interaction.options.getString('profile')
+            await interaction.editReply(`Finding ${profileArg}'s VRChat Group member profile...`)
+            
+            try{
+                foundGroupMember = await findVRCUserDataFromProfile(interaction, profileArg, "groupMember")
+                if(!foundGroupMember){ 
+                    await interaction.editReply("This user is not in the server's VRChat Group.")
+                    return
+                }
+                
+                //send embed with profile link button
+                const createdVRCGroupMemberEmbed = await createVRCGroupMemberEmbed(interaction, foundGroupMember, false)
+                const collectorMessage = await interaction.editReply({
+                    content: "",
+                    embeds: [createdVRCGroupMemberEmbed.groupMemberEmbed],
+                    components: [createdVRCGroupMemberEmbed.vrcActionRow1, createdVRCGroupMemberEmbed.vrcActionRow2]
+                })
+
+                //run button/menu handler (collector)
+                const filter = i => i.user.id === interaction.user.id
+                const collector = collectorMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
+                collector.on('collect', async i => {
+                    await i.deferUpdate()
+                    const groupId = process.env.VRC_GROUP_ID
+
+                    //handle kick/ban buttons
+                    if(i.customId === 'vrcKick' || i.customId === 'vrcBan'){
+                        let messageContext1
+                        let messageContext2
+                        let messageContext3
+                        if(i.customId === "vrcKick"){
+                            messageContext1 = "kicking"
+                            messageContext2 = "kicked"
+                            messageContext3 = "kick"
+                        }
+                        else if(i.customId === "vrcBan"){
+                            messageContext1 = "banning"
+                            messageContext2 = "banned"
+                            messageContext3 = "ban"
+                        }
+                        
+                        //get user to remove, and handle confirmation
+                        const userToRemove = await vrc.users.get(foundGroupMember.userId)
+                        const userToRemoveName = userToRemove.data.displayName
+                        const confirmationMessage = await interaction.editReply({ content: `Do you want to ${messageContext3} ${userToRemoveName} from the VRChat Group?`, components: [booleanActionRow] })
+                        const confirmationResult = await handleConfirmationMessage(confirmationMessage, userToRemoveName, messageContext3)
+
+                        //handle kicking/banning
+                        if(confirmationResult === true){ 
+                            try{
+                                if(i.customId === "vrcKick"){ await vrc.groups.kickMember(groupId, foundGroupMember.userId) }
+                                else if(i.customId === "vrcBan"){ await vrc.groups.banMember(groupId, foundGroupMember.userId) }
+                                await i.editReply(`Successfully ${messageContext2} ${userToRemoveName} from VRChat Group.`) 
+                            }
+                            catch(error){
+                                console.error(`Error ${messageContext1} user from VRChat Group:`, error) 
+                                await interaction.editReply(`An error occurred while trying to ${messageContext3} ${userToRemoveName} from VRChat Group. Please try again, or check console for more info.`)        
+                            }
+                        }
+                    }
+
+                    //handle roles drop-down menu
+                    if(i.isStringSelectMenu() && i.customId === 'vrcRoles') {
+                        const selectedRoleId = i.values[0]
+
+                        //handle removing/adding roles
+                        if(foundGroupMember.roleIds.includes(selectedRoleId)){ await vrc.groups.removeMemberRole(groupId, foundGroupMember.userId, selectedRoleId) }
+                        else{ await vrc.groups.addMemberRole(groupId, foundGroupMember.userId, selectedRoleId) }
+                        await i.editReply({ content: "Updating Group Member roles..." })
+
+                        //refresh foundGroupMember to get updated roles
+                        foundGroupMember = await vrc.groups.getMember(groupId, foundGroupMember.userId)
+                        const updatedFoundGroupMember = foundGroupMember.data
+
+                        //disabled components
+                        const updatedVRCGroupMemberEmbed = await createVRCGroupMemberEmbed(interaction, updatedFoundGroupMember, true)
+                        await i.editReply({ 
+                            content: "",
+                            embeds: [updatedVRCGroupMemberEmbed.groupMemberEmbed],
+                            components: [updatedVRCGroupMemberEmbed.vrcActionRow1, updatedVRCGroupMemberEmbed.vrcActionRow2]
+                        })
+                    }
+                })
+                //on collector timer's end
+                collector.on('end', async (collected) => {
+                    if(collected.size === 0){ 
+                        console.log("collector ended")
+                        const updatedVRCGroupMemberEmbed = await createVRCGroupMemberEmbed(interaction, foundGroupMember, true)
+                        await interaction.editReply({ 
+                            content: "",
+                            embeds: [updatedVRCGroupMemberEmbed.groupMemberEmbed],
+                            components: [updatedVRCGroupMemberEmbed.vrcActionRow1, updatedVRCGroupMemberEmbed.vrcActionRow2]
+                        })
+                    }
+                })
+            }
+            catch(error){
+                console.error("An error occured while trying to find the VRChat User, or while creating the VRChat User Embed.", error)
+                await interaction.editReply("An error occured while trying to find that VRChat User.")
+            }
+            
         }
 
         //ban/kick subcommand

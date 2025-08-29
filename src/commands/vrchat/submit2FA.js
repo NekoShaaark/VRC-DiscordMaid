@@ -56,6 +56,7 @@ export default {
             if(result.data.verified){
                 console.log("New 2FA code submitted, please reboot.")
                 await interaction.editReply('New 2FA code submitted. Please reboot bot to complete reconnect!')
+                //TODO: add to production
                 // process.exit(0)
             }
             else{ 
