@@ -25,8 +25,8 @@ export default {
             .setTitle(`Discord Maid Bot Info`)
             .setDescription("Discord bot for interacting with the VRChat API, Discord moderation and custom functions.")
             .addFields(
-                { name: "Owner", value: "<@930887691644584048>" },
-                { name: "Programmer", value: "<@484404780349784089>" }
+                { name: "Project Commissioner ", value: "Kosaku/Jack" },
+                { name: "Programmer", value: "[Neko Shark](https://github.com/NekoShaaark)" }
             )
             .setFooter({ text: '"In a Sea of Fading Stars."' })
         await interaction.editReply({ content: '', embeds: [infoEmbed] })

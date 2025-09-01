@@ -97,7 +97,11 @@ async function formatGroupRoles(userRoleIds){
         .map(role => role.name)                        //grab just the role name
         .join("\n") || "*No roles.*"                   //join with newlines
 
-    return { rolesNameString, rolesNamesObject }
+    //check if the user has a higher role than the bot's role
+    const hasHigherRole = groupRolesData.some(role => userRoleIds.includes(role.id) && role.order < botRole.order)
+    const hasSameRole = groupRolesData.some(role => userRoleIds.includes(role.id) && role.order === botRole.order)
+
+    return { rolesNameString, rolesNamesObject, hasHigherRole, hasSameRole }
 }
 
 export async function findVRCUserDataFromProfile(interaction, profileArg, userGetType){
@@ -225,22 +229,28 @@ export async function createVRCGroupMemberEmbed(interaction, groupMemberData, se
             ...(foundUserObject.userIcon && foundUserObject.userIcon !== "" ? { iconURL: foundUserObject.userIcon } : {}) })
         .setTimestamp()
 
+    //set if components should be disabled
+    let setRoleSelectDisabled = false
+    let setKickBanDisabled = false
+    if(setDisabled == true || groupRoles.hasHigherRole){ setRoleSelectDisabled = true; setKickBanDisabled = true }
+    if(groupRoles.hasSameRole){ setKickBanDisabled = true }
+        
     //role change select menu and kick/ban buttons at bottom of embed message
     const roleSelect = new StringSelectMenuBuilder()
         .setCustomId('vrcRoles')
         .setPlaceholder('Select roles to Add/Remove')
         .addOptions(groupRoles.rolesNamesObject)
-        .setDisabled(setDisabled)
+        .setDisabled(setRoleSelectDisabled)
     const vrcKick = new ButtonBuilder()
         .setCustomId('vrcKick')
         .setLabel('Kick')
         .setStyle(ButtonStyle.Danger)
-        .setDisabled(setDisabled)
+        .setDisabled(setKickBanDisabled)
     const vrcBan = new ButtonBuilder()
         .setCustomId('vrcBan')
         .setLabel('Ban')
         .setStyle(ButtonStyle.Danger)
-        .setDisabled(setDisabled)
+        .setDisabled(setKickBanDisabled)
     const vrcActionRow1 = new ActionRowBuilder()
         .addComponents(roleSelect)
     const vrcActionRow2 = new ActionRowBuilder()
@@ -459,7 +469,7 @@ export default {
             })
 
             //run button handler (collector)
-            const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+            const filter = i => i.user.id === interaction.user.id
             const collector = interaction.channel.createMessageComponentCollector({ filter, max:1, time:15000 })
             collector.on('collect', async i => {
                 await i.deferUpdate()
@@ -546,7 +556,7 @@ export default {
             })
 
             //run button handler (collector)
-            const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+            const filter = i => i.user.id === interaction.user.id
             const collector = embedMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
             collector.on('collect', async i => {
                 await i.deferUpdate()

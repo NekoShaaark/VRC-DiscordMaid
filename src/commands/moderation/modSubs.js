@@ -7,6 +7,7 @@ import { ActionRowBuilder, AttachmentBuilder, AuditLogEvent, ButtonBuilder, Butt
 import { createServerLogInDB, createUserNoteInDB, getAllArchivedServerLogsInDB, getAllServerLogsInDB, getAllUserNotesInDB, getServerLogInDB, getUserNoteInDB, removeServerLogInDB, removeUserNoteInDB } from '../../db/dbHandling.js'
 import { getVRC } from '../../vrchatClient.js'
 import LogEventTypes from '../../misc/logEventTypes.js'
+import { LogEventsObject } from '../../misc/logEventTypes.js'
 import { serverLogLogger } from '../../misc/serverLogLogger.js'
 import { runServerLogArchivalTask, unarchiveServerLog } from '../../db/serverLogArchival.js'
 import { createVRCGroupMemberEmbed, findVRCUserDataFromProfile } from '../vrchat/vrchatSubs.js'
@@ -122,6 +123,27 @@ export async function createServerLogEmbed(interaction, serverLogData, serverLog
     return serverLogEmbed
 }
 
+async function createServerLogInfoEmbed(serverLogData, serverLogIndex, serverLogLength){
+    let serverLogPlacement = ""
+    let relatedDetails = ""
+    let viewExamples = ""
+    if(serverLogIndex && serverLogLength > 1){ serverLogPlacement = `${serverLogIndex}/${serverLogLength}` }
+    if(serverLogData.relatedDetails?.length){ relatedDetails += `${serverLogData.relatedDetails.map(e => `${e}`).join("\n")}` }
+    if(serverLogData.viewExamples?.length){ viewExamples += `${serverLogData.viewExamples.map(e => `- \`${e}\``).join("\n")}` }
+
+    const infoEmbed = new EmbedBuilder()
+        .setColor('DarkPurple')
+        .setTitle(`Server Logs Info ${serverLogPlacement}`)
+        .addFields(
+            { name: "Event Type", value: serverLogData.eventType, inline: true },
+            { name: "View Name", value: serverLogData.name, inline: true },
+            { name: "Description", value: serverLogData.description },
+            { name: "Related Details", value: relatedDetails },
+            { name: "View Examples", value: viewExamples }
+        )
+    return infoEmbed
+}
+
 async function handlePageEmbed(interaction, array, removeMultipleNotes, embedType){
     if(!array){ return null }
 
@@ -132,6 +154,7 @@ async function handlePageEmbed(interaction, array, removeMultipleNotes, embedTyp
     if(embedType == "userNote"){ embeds = await Promise.all(array.map((note, index) => createUserNoteEmbed(note, "view", index+1, array.length))) }
     else if(embedType == "serverLog"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view", index+1, array.length))) }
     else if(embedType == "serverLog-all"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-all", index+1, array.length))) }
+    else if(embedType == "serverLog-info"){ embeds = await Promise.all(array.map((log, index) => createServerLogInfoEmbed(log, index+1, array.length))) }
     else if(embedType == "archivedServerLog"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-archived", index+1, array.length))) }
     else if(embedType == "archivedServerLog-all"){ embeds = await Promise.all(array.map((log, index) => createServerLogEmbed(interaction, log, "view-all-archived", index+1, array.length))) }
     
@@ -278,7 +301,7 @@ async function handleMassDBEntryRemoval(interaction, embedMessage, array, delete
     await loggingChannel.send({ content: `<@${interaction.user.id}> successfully deleted ${messageContext} ${removedEntriesMessage}.`, embeds: [], components: [] })
 }
 
-async function handleConfirmationMessage(message, userArg, contextType){
+async function handleConfirmationMessage(interaction, message, userArg, contextType){
     return new Promise((resolve) => {
         let messageContext
         switch(contextType){
@@ -291,7 +314,7 @@ async function handleConfirmationMessage(message, userArg, contextType){
         }
         
         //run button handler (collector)
-        const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+        const filter = i => i.user.id === interaction.user.id
         const collector = message.createMessageComponentCollector({ filter, max:1, time:15000 })
         collector.on('collect', async i => {
             await i.deferUpdate()
@@ -473,7 +496,7 @@ async function handleSubcommandDBRemoval(interaction, subcommandIdArg, subcomman
     }
     
     //run button handler (collector)
-    const filter = i => i.customId === 'yesButton' || i.customId === 'noButton'
+    const filter = i => i.user.id === interaction.user.id
     const collector = embedMessage.createMessageComponentCollector({ filter, max:1, time:15000 })
     collector.on('collect', async i => {
         if(!removeMultipleEntries){ await i.deferUpdate() }
@@ -594,6 +617,16 @@ export const commandMetadata = {
             permissions: ["MODERATOR"],
             description: "Remove/View categorized Server Logs.",
             subcommands: {
+                info: {
+                    permissions: ["MODERATOR"],
+                    usage: "/mod logs info <eventType/viewName>",
+                    examples: [
+                        "/mod logs info",
+                        "/mod logs info MEMBER_JOIN",
+                        "/mod logs info Member Join"
+                    ],
+                    description: 'Shows all the Events that are logged as a "Server Log" (or specific Event).'
+                },
                 remove: {
                     permissions: ["ADMIN"],
                     usage: "/mod logs remove <noteId>",
@@ -744,6 +777,16 @@ export default {
             group
                 .setName('logs')
                 .setDescription('Remove/View categorized Server Logs.')
+                //TODO: info logs subcommand
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('info')
+                        .setDescription('Shows all the Events that are logged as a "Server Log" (or specific Event).')
+                        .addStringOption(option =>
+                            option
+                                .setName('event')
+                                .setDescription('Get details about a specific Event.'))
+                )
                 //remove logs subcommand
                 .addSubcommand(subcommand =>
                     subcommand
@@ -777,6 +820,7 @@ export default {
                                     { name: 'Member Leave', value: LogEventTypes.MEMBER_LEAVE },
                                     { name: 'Member Kick', value: LogEventTypes.MEMBER_KICK },
                                     { name: 'Member Ban', value: LogEventTypes.MEMBER_BAN },
+                                    { name: 'Member Unban', value: LogEventTypes.MEMBER_UNBAN },
                                     { name: 'Timeout Add', value: LogEventTypes.MEMBER_TIMEOUT_ADD },
                                     { name: 'Timeout Remove', value: LogEventTypes.MEMBER_TIMEOUT_REMOVE },
                                     { name: 'Message Edited', value: LogEventTypes.MESSAGE_EDIT },
@@ -804,12 +848,12 @@ export default {
                                     { name: 'Bulk Deleted Messages Amount', value: 'bulkDeleteMessagesCount' },
                                     { name: 'Invite Code', value: 'inviteCode' },
                                     { name: 'Invite Channel', value: 'inviteChannel' },
-                                    { name: 'Invite Max Age', value: 'inviteMaxAge' },
+                                    { name: 'Invite Length', value: 'inviteMaxAge' },
                                     { name: 'Invite Max Uses', value: 'inviteMaxUses' },
                                     { name: 'Invite Temporary', value: 'inviteTemporary' },
                                     { name: 'VRChat User ID', value: 'vrcUserId' },
-                                    { name: 'Usernote Note', value: 'usernote' },
                                     { name: 'Usernote ID', value: 'usernoteId' },
+                                    { name: 'Usernote Note', value: 'usernote' },
                                     { name: 'Reason', value: 'reason' }
                                 ))
                         .addStringOption(option =>
@@ -860,7 +904,7 @@ export default {
                                 .setRequired(true))
                 )
         )
-        //TODO: group-user subcommand
+        //group-user subcommand
         .addSubcommand(subcommand => 
             subcommand
                 .setName('group-user')
@@ -946,16 +990,21 @@ export default {
                         .setDescription("User to remove timeout from.")
                         .setRequired(true))
         )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages), //STUB: maybe change this
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     cooldown: 8,
 
-    //TODO: add check for if user has moderator or admin permission
     //runs the command
     async execute(interaction) {
         const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
         const subcommandGroup = interaction.options.getSubcommandGroup()
         const subcommand = interaction.options.getSubcommand()
         await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
+
+        //check that user has moderator or admin role (just in-case accidently passes permission check)
+        if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID) && !interaction.member.roles.cache.has(process.env.MOD_ROLE_ID) && !interaction.member.id === process.env.BOT_MANAGER_ID){
+            await interaction.editReply("You do not have the role to use this command. If it is urgent, or if you have the wrong moderator/administrator role, please contact an admin.")
+            return
+        }
 
         //usernote subcommandGroup
         if(subcommandGroup === "usernote"){
@@ -1013,6 +1062,19 @@ export default {
 
         //logs subcommandGroup
         if(subcommandGroup === "logs"){
+            //logs info subcommand
+            if(subcommand === "info"){
+                let foundEvent = LogEventsObject
+                const userArg = interaction.options.getString("event")
+
+                //find specific event, if provided with one to find
+                if(userArg){
+                    foundEvent = [LogEventsObject.find(event => event.name === userArg || event.eventType === userArg)]
+                    if(!foundEvent[0]){ await interaction.editReply(`Provided Event does not exist. Please provide Event's "Event Type" or "View Name".`); return }
+                }
+
+                await handlePageEmbed(interaction, foundEvent, false, "serverLog-info")
+            }
             //logs remove subcommand
             if(subcommand === "remove"){
                 if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID)){ await interaction.editReply("You do not have permission to activate this command. If it is urgent, please contact an admin."); return }
@@ -1113,7 +1175,7 @@ export default {
                 
                 //confirmation button before activating archival task
                 const confirmationMessage = await interaction.editReply({ content: "Are you sure you want to activate the Archival task *now*?", components: [booleanActionRow] })
-                const confirmationResult = await handleConfirmationMessage(confirmationMessage, interaction.user, subcommand)
+                const confirmationResult = await handleConfirmationMessage(interaction, confirmationMessage, interaction.user, subcommand)
 
                 if(confirmationResult === true){
                     try{ 
@@ -1135,7 +1197,7 @@ export default {
                     const isLogArchived = await getServerLogInDB(null, logId, null, null, null, null, true)
                     if(!isLogArchived){ await interaction.editReply("Provided LogID is not archived, please provide a valid archived Server Log to unarchive."); return }
                     const restoredLogId = await unarchiveServerLog(logId)
-                    await interaction.editReply(`Successfully restored log ${restoredLogId}`)
+                    await interaction.editReply(`Successfully restored log ${restoredLogId}!`)
                 }
                 catch(error){ 
                     console.error("Error restoring Archived Server Log: ", error)
@@ -1192,7 +1254,7 @@ export default {
                         const userToRemove = await vrc.users.get(foundGroupMember.userId)
                         const userToRemoveName = userToRemove.data.displayName
                         const confirmationMessage = await interaction.editReply({ content: `Do you want to ${messageContext3} ${userToRemoveName} from the VRChat Group?`, components: [booleanActionRow] })
-                        const confirmationResult = await handleConfirmationMessage(confirmationMessage, userToRemoveName, messageContext3)
+                        const confirmationResult = await handleConfirmationMessage(interaction, confirmationMessage, userToRemoveName, messageContext3)
 
                         //handle kicking/banning
                         if(confirmationResult === true){ 
@@ -1200,6 +1262,7 @@ export default {
                                 if(i.customId === "vrcKick"){ await vrc.groups.kickMember(groupId, foundGroupMember.userId) }
                                 else if(i.customId === "vrcBan"){ await vrc.groups.banMember(groupId, foundGroupMember.userId) }
                                 await i.editReply(`Successfully ${messageContext2} ${userToRemoveName} from VRChat Group.`) 
+                                return
                             }
                             catch(error){
                                 console.error(`Error ${messageContext1} user from VRChat Group:`, error) 
@@ -1229,11 +1292,11 @@ export default {
                             components: [updatedVRCGroupMemberEmbed.vrcActionRow1, updatedVRCGroupMemberEmbed.vrcActionRow2]
                         })
                     }
+                    return
                 })
                 //on collector timer's end
                 collector.on('end', async (collected) => {
                     if(collected.size === 0){ 
-                        console.log("collector ended")
                         const updatedVRCGroupMemberEmbed = await createVRCGroupMemberEmbed(interaction, foundGroupMember, true)
                         await interaction.editReply({ 
                             content: "",
@@ -1249,7 +1312,6 @@ export default {
             }
             
         }
-
         //ban/kick subcommand
         if(subcommand === "ban" || subcommand === "kick"){
             let messageContext1
@@ -1273,7 +1335,7 @@ export default {
 
             let dmMessage = `Heyo ${userArg}, \nYou have been ${messageContext2} from ${interaction.guild.name} for reason: "${reasonArg}". \n\nIf you believe this was a mistake, please contact one of the Admins of the above Server to assist in an appeal.`
             const confirmationMessage = await interaction.editReply({ content: `Do you want to ${subcommand} ${userArg} for "${reasonArg}"?`, components: [booleanActionRow] })
-            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, subcommand)
+            const confirmationResult = await handleConfirmationMessage(interaction, confirmationMessage, userArg, subcommand)
             
             if(confirmationResult === true){ 
                 try{ 
@@ -1320,7 +1382,7 @@ export default {
             }
 
             const confirmationMessage = await interaction.editReply({ content: `Do you want to unban ${userToUnban}? \nUser was previous banned for "${newBanReason}"`, components: [booleanActionRow] })
-            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userToUnban, "unban")
+            const confirmationResult = await handleConfirmationMessage(interaction, confirmationMessage, userToUnban, "unban")
 
             if(confirmationResult === true){
                 try{
@@ -1350,7 +1412,7 @@ export default {
             const timeoutLength = lengthArg * 60000 //convert time to minutes
             const convertedTime = await convertMinutesToString(lengthArg)
             const confirmationMessage = await interaction.editReply({ content: `Do you want to timeout ${userArg} for ${lengthArg} minutes${convertedTime}for "${reasonArg}"?`, components: [booleanActionRow] })
-            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, "timeout")
+            const confirmationResult = await handleConfirmationMessage(interaction, confirmationMessage, userArg, "timeout")
 
             if(confirmationResult === true){ 
                 try{ 
@@ -1392,7 +1454,7 @@ export default {
             const timeoutRemaining = await getTimeRemainingString(timeoutEnd)
             
             const confirmationMessage = await interaction.editReply({ content: `${userArg}'s timeout ends ${time(timeoutEnd, TimestampStyles.RelativeTime)}. \nThey were timed out for "${timeoutReason}". \nDo you want to remove their timeout?`, components: [booleanActionRow] })
-            const confirmationResult = await handleConfirmationMessage(confirmationMessage, userArg, "untimeout")
+            const confirmationResult = await handleConfirmationMessage(interaction, confirmationMessage, userArg, "untimeout")
         
             if(confirmationResult === true){
                 try{

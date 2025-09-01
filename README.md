@@ -13,6 +13,7 @@ To make use of this project, please replace the ".env.example" and "config.json.
    - Invite is created/deleted _(and who created/deleted it)_.
    - VRChat profile is linked/unlinked _(and who linked/unlinked the profile, including if a moderator unlinked it, with a reason)_.
    - User Note is deleted _(and who deleted it)_.
+- `/mod logs info <eventType/viewName>` for a paged embed to show all Events that are logged as a "Server Log" _(provide no argument)_, or specified Event, with view name, description, related details, and view examples _(how to filter with the specific Event Type)_.
 - `/mod logs remove <logId>` to remove log using log's Id _(mass-remove logs by providing logIds seperated by a comma)_.
 - `/mod logs view <arguments>` to fetch/filter all logs of a specific User/Affected User/Event Type/Details _(all arguments and types can be found in-project)_.
 - `/mod logs view-all` to fetch all logs with no filtering _(will provide a pagination embed that can be manually paged through)_.

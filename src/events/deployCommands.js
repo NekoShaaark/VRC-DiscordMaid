@@ -38,7 +38,7 @@ const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
 		//refresh all commands in the guild with the current set
 		const data = await rest.put(
-			Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.DEV_GUILD_ID),
+			Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
 			{ body: commands }
 		)
 

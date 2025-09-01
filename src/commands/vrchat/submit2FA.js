@@ -16,14 +16,14 @@ export const commandMetadata = {
     permissions: ["ADMIN"],
     usage: "/submit2fa <code>",
     examples: ["/submit2fa 123456"],
-    description: "Submit new 2FA code for VRChat User."
+    description: "Submit new 2FA code for VRChat Bot."
 }
 
 //export
 export default {
     data: new SlashCommandBuilder()
         .setName('submit2fa')
-        .setDescription("Submit new 2FA code for VRChat User.")
+        .setDescription("Submit new 2FA code for VRChat Bot.")
         .addStringOption(option => 
             option
                 .setName('2facode')
@@ -36,7 +36,15 @@ export default {
 
     //runs the command
     async execute(interaction) {
-        await interaction.deferReply()
+        await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
+
+        //check that user has admin or bot manager role (just in-case accidently passes permission check)
+        if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID) && !interaction.member.id === process.env.BOT_MANAGER_ID){
+            await interaction.editReply("You do not have the role to use this command. If it is urgent, please contact an admin.")
+            return
+        }
+
+        //check if new 2fa code is needed
         if(!config.new2faCodeNeeded){ 
             await interaction.editReply("A new 2FA Code isn't required now.")
             return 

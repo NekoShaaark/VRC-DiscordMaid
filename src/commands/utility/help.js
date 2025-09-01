@@ -5,7 +5,7 @@ import { flattenMetadata, getAllSubcommandMetadata } from '../../misc/metadataHa
 dotenv.config()
 
 async function determineUserPermission(member) {
-    if(member.roles.cache.has(process.env.ADMIN_ROLE_ID)){ return ["ADMIN"] }
+    if(member.roles.cache.has(process.env.ADMIN_ROLE_ID) || member.id === process.env.BOT_MANAGER_ID){ return "ADMIN" }
     else if(member.roles.cache.has(process.env.MOD_ROLE_ID)){ return "MODERATOR" }
     return "USER"
 }
@@ -33,7 +33,7 @@ export const commandMetadata = {
         "/help ping",
         "/help vrchat link"
     ],
-    description: "Shows the help menu for all commands."
+    description: "Shows the help menu for all commands (or specific command)."
 }
 
 //export
@@ -44,7 +44,7 @@ export default {
         .addStringOption(option =>
             option
                 .setName('command')
-                .setDescription('Get details about specific command.')
+                .setDescription('Get details about specific command (or specific command).')
         ),
     cooldown: 5,
 
@@ -55,7 +55,7 @@ export default {
         const metadataMap = await flattenMetadata(entries)
         const userHighestPermission = await determineUserPermission(interaction.member)
         let helpEmbed
-        await interaction.deferReply()
+        await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
         
         //fetch all major commands, and organize into embed
         if(!commandArg){
@@ -96,7 +96,7 @@ export default {
             let commandExamples = ""
             let commandSubcommands = ""
             let commandSubcommandGroups = ""
-            if(metadata.examples?.length){ commandExamples += `${metadata.examples.map(e => `\`${e}\``).join("\n")}` }
+            if(metadata.examples?.length){ commandExamples += `${metadata.examples.map(e => `- \`${e}\``).join("\n")}` }
             if(metadata.subcommands?.length){ 
                 for(const sub of metadata.subcommands){
                     //if user doesn't have fetched permission, group/subcommand won't appear
