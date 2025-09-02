@@ -1,7 +1,6 @@
-//imports
 import dotenv from 'dotenv'
 import { readdirSync } from 'fs'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { join, dirname } from 'path'
 import { ActivityType, Client, Collection, GatewayIntentBits } from 'discord.js'
 import { initializeVRC } from './vrchatClient.js'
@@ -46,23 +45,31 @@ for(const folder of commandFolders){
 	const commandsPath = join(foldersPath, folder)
 	const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith('.js'))
 
-	for(const file of commandFiles){
-		const filePath = join(commandsPath, file)
-    const commandModule = await import(filePath)
-  	const command = commandModule.default
-		if('data' in command && 'execute' in command){ client.commands.set(command.data.name, command) } 
-    else{ console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`) }
-	}
+  try{
+	  for(const file of commandFiles){
+	  	const filePath = join(commandsPath, file)
+      const commandModule = await import(pathToFileURL(filePath).href)
+    	const command = commandModule.default
+	  	if('data' in command && 'execute' in command){ client.commands.set(command.data.name, command) } 
+      else{ console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`) }
+	  }
+  }
+  catch(error){ console.error(`[ERROR] Failed to load command ${filePath}:`, error) }
 }
 
 //event files handling
 for(const file of eventFiles){
   const filePath = join(eventsPath, file)
-  const eventModule = await import(filePath)
-  const event = eventModule.default || eventModule
+  
+  try{
+    //convert the absolute Windows path to a proper file:// URL
+    const eventModule = await import(pathToFileURL(filePath).href)
+    const event = eventModule.default ?? eventModule //support both default export and named export
 
-  if(event.once){ client.once(event.name, (...args) => event.execute(...args)) } 
-  else{ client.on(event.name, (...args) => event.execute(...args)) }
+    if(event.once){ client.once(event.name, (...args) => event.execute(...args)) } 
+    else{ client.on(event.name, (...args) => event.execute(...args)) }
+  } 
+  catch(error){ console.error(`[ERROR] Failed to load event ${filePath}:`, error) }
 }
 
 
