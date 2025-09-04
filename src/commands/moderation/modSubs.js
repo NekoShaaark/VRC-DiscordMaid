@@ -583,7 +583,7 @@ export const commandMetadata = {
             subcommands: {
                 add: {
                     permissions: ["MODERATOR"],
-                    usage: "/mod usernote add <user> <note>",
+                    usage: "/mod usernote add <@user> <note>",
                     examples: ["/mod usernote add @stinkyGoober This guy is really stinky"],
                     description: "Add a note to a User."
                 },
@@ -598,7 +598,7 @@ export const commandMetadata = {
                 },
                 view: {
                     permissions: ["MODERATOR"],
-                    usage: "/mod usernote view <user> <noteId>",
+                    usage: "/mod usernote view <@user> <noteId>",
                     examples: [
                         "/mod usernote view @stinkyGoober",
                         "/mod usernote view 12",
@@ -638,7 +638,7 @@ export const commandMetadata = {
                 },
                 view: {
                     permissions: ["MODERATOR"],
-                    usage: "/mod logs view <user> <affectedUser> <eventType> <detail> <detailValue> <limit> <logId> <archived>",
+                    usage: "/mod logs view <@user> <@affectedUser> <eventType> <detail> <detailValue> <limit> <logId> <archived>",
                     examples: [
                         "/mod logs view user:@stinkyGoober eventType:Member Join",
                         "/mod logs view eventtype:Member Ban detail:Reason detailvalue:Stinky limit:50",
@@ -651,7 +651,7 @@ export const commandMetadata = {
                     usage: "/mod logs view-all <archived>",
                     examples: [
                         "/mod logs view-all",
-                        "/mod logs view-all true"
+                        "/mod logs view-all archived:true"
                     ],
                     description: "View all logs currently stored in the database."
                 },
@@ -672,7 +672,7 @@ export const commandMetadata = {
     subcommands: {
         ban: {
             permissions: ["MODERATOR"],
-            usage: "/mod ban <user> <reason>",
+            usage: "/mod ban <@user> <reason>",
             examples: ["/mod ban @stinkyGoober Breaking rules"],
             description: "Bans a user from the server."
         },
@@ -684,25 +684,25 @@ export const commandMetadata = {
         },
         kick: {
             permissions: ["MODERATOR"],
-            usage: "/mod kick <user> <reason>",
+            usage: "/mod kick <@user> <reason>",
             examples: ["/mod kick @stinkyGoober Being annoying"],
             description: "Kicks a user from the server."
         },
         timeout: {
             permissions: ["MODERATOR"],
-            usage: "/mod timeout <user> <minutes> <reason>",
+            usage: "/mod timeout <@user> <minutes> <reason>",
             examples: ["/mod timeout @stinkyGoober 60 Spamming chat"],
             description: "Timeout a user for the given duration (in minutes)."
         },
         untimeout: {
             permissions: ["MODERATOR"],
-            usage: "/mod untimeout <user>",
+            usage: "/mod untimeout <@user>",
             examples: ["/mod untimeout @stinkyGoober"],
             description: "Removes timeout given to specified user."
         },
         "group-user": {
             permissions: ["MODERATOR"],
-            usage: "/mod group-user <user>/<link>/<username>",
+            usage: "/mod group-user <@user/link/username>",
             examples: [
                 "/mod group-user @vrchatEnjoyer32",
                 "/mod group-user VRChatEnjoyer32",
@@ -777,7 +777,7 @@ export default {
             group
                 .setName('logs')
                 .setDescription('Remove/View categorized Server Logs.')
-                //TODO: info logs subcommand
+                //info logs subcommand
                 .addSubcommand(subcommand =>
                     subcommand
                         .setName('info')
@@ -870,7 +870,7 @@ export default {
                         .addStringOption(option =>
                             option
                                 .setName('logid')
-                                .setDescription('Log ID to view (overrides other filters).'))
+                                .setDescription('Log ID to view (optional, overrides other filters).'))
                         .addBooleanOption(option =>
                             option
                                 .setName('archived')

@@ -280,7 +280,7 @@ export const commandMetadata = {
     description: "VRChat commands!!",
     subcommands: {
         profile: {
-            usage: "/vrchat profile <user>/<link>/<username> <short>",
+            usage: "/vrchat profile <@user/link/vrcName> <short>",
             examples: [
                 "/vrchat profile",
                 "/vrchat profile short:true",
@@ -296,7 +296,7 @@ export const commandMetadata = {
             description: "Link your VRChat profile to your Discord profile."
         },
         unlink: {
-            usage: "/vrchat unlink <user> <reason>",
+            usage: "/vrchat unlink <@user/vrcLink> <reason>",
             examples: [
                 "/vrchat unlink",
                 "/vrchat unlink @vrchatEnjoyer32 Accidentally linked wrong account",

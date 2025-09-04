@@ -30,6 +30,7 @@ export const commandMetadata = {
     category: "Utility",
     usage: "/help <command>",
     examples: [
+        "/help",
         "/help ping",
         "/help vrchat link"
     ],
