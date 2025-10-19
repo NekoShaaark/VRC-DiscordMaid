@@ -2,7 +2,7 @@
   "name": "vrc-discordmaid",
   "version": "0.9",
   "description": "Discord bot for interacting with the VRChat API, Discord moderation and custom functions.",
-  "license": "ISC",
+  "license": "GPL-3.0-only",
   "author": "nekoshaaark",
   "type": "module",
   "main": "src/index.js",

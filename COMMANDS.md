@@ -1,6 +1,6 @@
 <h1 align="center">
   VRChat Discord Maid<br>
-  <small>Commands List <i>[WIP]</i></small>
+  <small>Commands List</small>
 </h1>
 
 <div align="center">

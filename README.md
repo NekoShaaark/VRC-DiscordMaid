@@ -12,6 +12,7 @@ A Discord bot that connects Discord and VRChat, providing moderation tools, user
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Commands Overview](#commands-overview)
+   - [All Commands](COMMANDS.md)
 - [Architecture & Tech Stack](#architecture--tech-stack)
 - [License](#license)
 
@@ -93,7 +94,7 @@ node .
 ```
 Or, using the npm wrappers:
 - `npm run bot-start` <= starts bot
-- `npm run bot-stop` <= stops bot *(Ctrl‑C also works)*
+- `npm run bot-stop` <= stops bot *(Ctrl+C also works)*
 
 ---
 
