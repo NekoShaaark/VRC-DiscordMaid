@@ -25,12 +25,12 @@ A Discord bot that connects Discord and VRChat, providing moderation tools, user
 
 - **Moderation Tools** – Kick/ban/timeout commands that optionally DM the affected user with a reason, per‑user notes, bulk log or note removal, and an automatic archival pipeline (logs become “archived” after 90 days and are permanently purged after 180 days).
 
-- **Help & Info Commands** – `/help` for help on all commands, and `/mod logs info` for info on all loggable events.
+- **Help & Info Commands** – `/help` for help on all commands, and `/mod logs info` for info on all loggable events (all events are searchable/filterable).
 
 ---
 
 ## Quick Start
-> **TL;DR** – Clone, install dependencies, create database, configure, and run.
+> **TL;DR** – Clone, install dependencies, create database, configure .env file, generate database, and run.
 
 
 ### Step 1: Clone or download the repository
@@ -50,13 +50,13 @@ cd VRC-DiscordMaid
 npm ci
 ```
 
-### Step 3: Set up a local PostgreSQL instance
+### Step 3: Set up a local PostgreSQL database
 #### Step 3.1: Create a dedicated database & user
 Open a terminal *(or pgAdmin)* and run the following commands as the `postgres` super‑user.
 
 **Switch to the postgres super-user:**
-> - Linux/macOS: *`sudo -u postgres psql`*
-> - Windows: *open “SQL Shell (psql)” and log in as user “postgres”*
+- Linux/macOS: *`sudo -u postgres psql`*
+- Windows: *open “SQL Shell (psql)” and log in as user “postgres”*
 
 Once you've switched to the postgres super-user and are inside psql:
 ```
@@ -66,35 +66,54 @@ CREATE DATABASE vrcbotdb OWNER vrcbot;
 ```
 
 **Explanation:**
-- `\q` <= exits psql
+- `\q` <= exits psql.
 - `vrcbot` <= a non‑privileged user the bot will connect with.
-- `vrcbotdb` <= the database that will hold all tables created by Drizzle.
+- `vrcbotdb` <= the database name that will hold all tables created by Drizzle.
+- `'your_strong_password` <= the password that will be used to access the database (*do not* remove the 'commas' when typing a password).
 
 #### Step 3.2: Build the connection string
-Edit the following line in your **`.env`** *(see Step 4 for details)* file:
+Edit the following line in your **`.env`** file *(see Step 4 for details)*:
 ```
 DATABASE_URL=postgresql://vrcbot:your_strong_password@localhost:5432/vrcbotdb
 ```
-*Replace `your_strong_password` with the password you set above.*
+> Replace `vrcbot`, `your_strong_password`, and `vrcbotdb` with the credentials you set above (if any).
 
 ### Step 4: Create relivant `.env` and `config.json` files
 *(You can just rename the `.example` versions, instead of making new files).*\
 Replace the placeholder values with your secret tokens and other data.
 
-### Step 5: Set up Drizzle (PostgreSQL)
+**.env Details:**
+- `DISCORD_TOKEN` <= your Discord bot's token.
+- `CLIENT_ID` <= your Discord bot's ID, can be grabbed from Discord or Developer Portal as Application ID.
+- `GUILD_ID` <= Server ID that the bot will be in.
+- `MOD_ROLE_ID` <= Role ID of the Moderator role *(can access most moderator commands)*.
+- `ADMIN_ROLE_ID` <= Role ID of the Admin role *(can access all moderator and admin commands)*.
+- `BOT_MANAGER_USER_ID` <= User ID of the "Bot Manager" *(user that can run every command, ignoring moderator/admin role prerequisites; only grant this to one user)*.
+- `LOGGING_CHANNEL_ID` <= Channel ID where Server Logs will be sent to *(set this to a staff-only channel)*.
+- `WELCOME_CHANNEL_ID` <= Channel ID where new users will be welcomed.
+- `VRC_USERNAME` <= Username of VRChat bot account *(actual vrchat.com account credentials)*.
+- `VRC_PASSWORD` <= Password of VRChat bot account *(actual vrchat.com account credentials)*.
+- `VRC_GROUP_ID` <= Group ID of VRChat group that VRChat bot account is in *(make sure vrc bot account has admin permissions)*.
+- `VRC_GROUP_BOT_ID` <= Bot Group ID of VRChat bot account *(specifically the bot account's group id, not user id)*.
+- `DATABASE_URL` <= Drizzle/PostgreSQL database url string *(created in Step 3.2)*.
+
+> **Note: Do not change anything in config.json. This file is dynamically changed.**
+
+### Step 5: Generate Drizzle/PostgreSQL database
 ```
 npx drizzle-kit generate
 npx drizzle-kit push
 ```
 
 ### Step 6: Run the bot
-Direct Node launch:
-```
-node . 
-```
-Or, using the npm wrappers:
-- `npm run bot-start` <= starts bot
-- `npm run bot-stop` <= stops bot *(Ctrl+C also works)*
+Open the project directory in a terminal/console, and launch the bot using one of the two methods.
+1. Directly with Node using:
+   - `node .` <= starts bot
+   - Pressing `Ctrl+C`, `Ctrl+Z`, or closing the terminal that the command was run in, will all stop the bot.
+
+2. With PM2 (process handler) using:
+   - `npm run bot-start` <= starts bot
+   - `npm run bot-stop` <= stops bot
 
 ---
 

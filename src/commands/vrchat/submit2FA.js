@@ -1,5 +1,5 @@
 //imports
-import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
+import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
 import { VRChatApi } from '@kindlyfire/vrchatapi'
 import { getConfig } from '../../configManager.js'
 
@@ -36,10 +36,10 @@ export default {
 
     //runs the command
     async execute(interaction) {
-        await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
         //check that user has admin or bot manager role (just in-case accidently passes permission check)
-        if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID) && !interaction.member.id === process.env.BOT_MANAGER_ID){
+        if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID) && !interaction.member.id === process.env.BOT_MANAGER_USER_ID){
             await interaction.editReply("You do not have the role to use this command. If it is urgent, please contact an admin.")
             return
         }
@@ -64,8 +64,7 @@ export default {
             if(result.data.verified){
                 console.log("New 2FA code submitted, please reboot.")
                 await interaction.editReply('New 2FA code submitted. Please reboot bot to complete reconnect!')
-                //TODO: add to production
-                // process.exit(0)
+                process.exit(0)
             }
             else{ 
                 console.log("2FA code is incorrect, please try again.")

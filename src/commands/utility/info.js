@@ -23,7 +23,7 @@ export default {
         const infoEmbed = new EmbedBuilder()
             .setColor('DarkPurple')
             .setTitle(`Discord Maid Bot Info`)
-            .setDescription("Discord bot for interacting with the VRChat API, Discord moderation and custom functions.")
+            .setDescription("A Discord bot that connects Discord and VRChat, providing moderation tools, user-profile linking, and detailed server logging.")
             .addFields(
                 { name: "Project Commissioner ", value: "Kosaku/Jack" },
                 { name: "Programmer", value: "[Neko Shark](https://github.com/NekoShaaark)" }

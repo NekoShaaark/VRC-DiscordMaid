@@ -998,10 +998,10 @@ export default {
         const loggingChannel = interaction.guild.channels.cache.get(process.env.LOGGING_CHANNEL_ID)
         const subcommandGroup = interaction.options.getSubcommandGroup()
         const subcommand = interaction.options.getSubcommand()
-        await interaction.deferReply() //{ flags: MessageFlags.Ephemeral } //TODO: add this in production
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
         //check that user has moderator or admin role (just in-case accidently passes permission check)
-        if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID) && !interaction.member.roles.cache.has(process.env.MOD_ROLE_ID) && !interaction.member.id === process.env.BOT_MANAGER_ID){
+        if(!interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID) && !interaction.member.roles.cache.has(process.env.MOD_ROLE_ID) && !interaction.member.id === process.env.BOT_MANAGER_USER_ID){
             await interaction.editReply("You do not have the role to use this command. If it is urgent, or if you have the wrong moderator/administrator role, please contact an admin.")
             return
         }
