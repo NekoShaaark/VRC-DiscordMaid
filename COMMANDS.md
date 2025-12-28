@@ -5,7 +5,7 @@
 
 <div align="center">
   This document lists every slash‑command the bot provides, grouped by functionality.<br/>
-  Each command includes syntax, a short description, required permissions, and an example.
+  Each command includes syntax, a short description, required permissions, and one or more example(s).
 </div>
 
 ---
@@ -42,7 +42,7 @@
 ## Logging
 ### /mod logs info
 <details>
-<summary><code>/mod logs info</code> – Paginated embed of all, or specific loggable event(s).</summary>
+<summary><code>/mod logs info</code> – Paginated embed of all, or specific, loggable event(s).</summary>
 
 **Category:** Moderation/Logging
 

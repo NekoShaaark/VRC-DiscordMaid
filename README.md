@@ -9,16 +9,17 @@
 A Discord bot that connects Discord and VRChat, providing moderation tools, user‑profile linking, and detailed server logging.
 
 ## Table of Contents
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Commands Overview](#commands-overview)
+- [Features Overview](#features-overview)
+- [Setup Guide](#setup-guide)
+- [Commands & Loggable Events Peek](#commands--loggable-events-peek)
    - [All Commands](COMMANDS.md)
+   - [Loggable Server Events](EVENTLOGS.md)
 - [Architecture & Tech Stack](#architecture--tech-stack)
 - [License](#license)
 
 ---
 
-## Features
+## Features Overview
 - **Server Logging** – Loggable events include: Member joins/leaves, bans/kicks, timeouts, message edits/deletions, invite created/delete, VRChat link/unlink, and deletion of per-user usernotes. These mentioned events are stored in a local PostgreSQL database, and are formatted into a human-readable embed that is sent to a specified Discord channel.
 
 - **VRChat Integration** – Users can link/unlink their VRChat profile to Discord, retrieve profile data for any member, and (moderators only) sync VRChat group roles dynamically.
@@ -29,7 +30,7 @@ A Discord bot that connects Discord and VRChat, providing moderation tools, user
 
 ---
 
-## Quick Start
+## Setup Guide
 > **TL;DR** – Clone, install dependencies, create database, configure .env file, generate database, and run.
 
 
@@ -117,21 +118,30 @@ Open the project directory in a terminal/console, and launch the bot using one o
 
 ---
 
-## Commands Overview
-| Category   | Command                          | Description |
-|------------|----------------------------------|-------------|
-| Logging    | /mod logs info <eventType>               | Paginated embed showing logged events.
-|            | /mod logs remove <logId>                 | Delete one or many logs *(comma‑separated)*.
-|            | /mod logs archive                        | Trigger server logs archival task *now*.
-| VRChat     | /vrchat link <url>                       | Link a Discord user to a VRChat profile.
-|            | /vrchat profile <@user/url/vrcName>      | Get your linked VRChat profile, or user's profile.
-|            | /vrchat group‑join                       | Info embed for joining the VRChat group.
-| Moderation | /mod kick <@user> <reason>               | Kick a user *(with optional DM'd reason)*.
-|            | /mod usernote add <@user> <note>         | Attach a private note to a user.
-| General    | /help <command>                          | Show help embed for all or a specific command.
-|            | /info                                    | Basic bot credits.
+## Commands & Loggable Events Peek
+| Command                                | Description                                           |
+|----------------------------------------|-------------------------------------------------------|
+| /vrchat link <url>                     | Link a Discord user to a VRChat profile.              |
+| /vrchat profile <@user/url/vrcName>    | Get your linked VRChat profile, or user's profile.    |
+| /mod kick <@user> <reason>             | Kick a user *(with optional DM'd reason)*.            |
+| /mod usernote add <@user> <note>       | Attach a private note to a user.                      |
+| /mod logs archive                      | Trigger server logs archival task *now*.              |
+| /mod logs remove <logId>               | Delete one or many logs *(comma‑separated)*.          |
+| /help <command>                        | Show help embed for all or a specific command.        |
+| /info                                  | Basic bot credits.                                    |
 
-> **You can see the full list of commands in [COMMANDS.md](COMMANDS.md)**
+> **You can view the full list of commands in [COMMANDS.md](COMMANDS.md)**
+
+## Loggable Server Events
+| Server Event      | Description                                                  |
+|-------------------|--------------------------------------------------------------|
+| Member Join       | User joins the server.                                       |
+| Member Kick       | Moderator kicks a user from the server.                      |
+| Timeout Add       | Moderator gives a user a timeout.                            |
+| Invite Created    | User creates an invite.                                      |
+| VRChat Linked     | User links their VRChat profile to their Discord account.    |
+
+> **You can view the full list of loggable server events in [EVENTSLOGS.md](EVENTLOGS.md)**
 
 ---
 

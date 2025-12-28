@@ -56,7 +56,7 @@ export const LogEventsObject = [
   {
     eventType: LogEventTypes.MEMBER_KICK,
     name: "Member Kick",
-    description: "Server Log for when a user is kicked from the server.",
+    description: "Server Log for when a moderator kicks a user from the server.",
     relatedDetails: [
       "User",
       "Affected User",
@@ -70,8 +70,8 @@ export const LogEventsObject = [
   //MEMBER_BAN
   {
     eventType: LogEventTypes.MEMBER_BAN,
-    name: "Member ",
-    description: "Server Log for when a user is banned from the server.",
+    name: "Member Ban",
+    description: "Server Log for when a moderator bans a user from the server.",
     relatedDetails: [
       "User",
       "Affected User",
@@ -85,8 +85,8 @@ export const LogEventsObject = [
   //MEMBER_UNBAN
   {
     eventType: LogEventTypes.MEMBER_UNBAN,
-    name: "Member ",
-    description: "Server Log for when a user is unbanned from the server.",
+    name: "Member Unban",
+    description: "Server Log for when a moderator unbans a user from the server.",
     relatedDetails: [
       "User",
       "Affected User",
@@ -126,8 +126,8 @@ export const LogEventsObject = [
       "Reason"
     ],
     viewExamples: [
-      "/mod logs view user:@discordUser  affectedUser:@affectedUser  eventType:Timeout Remaining  detail:Timeout Remaining  detailValue:5 minutes",
-      "/mod logs view eventType:Timeout Remaining  detail:Reason  detailValue:Stinky"
+      "/mod logs view user:@discordUser  affectedUser:@affectedUser  eventType:Timeout Remove  detail:Timeout Remaining  detailValue:5 minutes",
+      "/mod logs view eventType:Timeout Remove  detail:Reason  detailValue:Stinky"
     ]
   },
 
@@ -165,10 +165,10 @@ export const LogEventsObject = [
   {
     eventType: LogEventTypes.MESSAGE_DELETE_BULK,
     name: "Messages Bulk Deleted",
-    description: "Server Log for when a moderator bulk deletes multiple messages.",
+    description: "Server Log for when a moderator bulk deletes multiple messages. *(Use LogID when viewing Log to include file if it doesn't appear.)*",
     relatedDetails: [
       "User",
-      "Bulk Deleted Messages File Name",
+      "Bulk Deleted Messages File",
       "Bulk Deleted Messages Preview",
       "Bulk Deleted Messages Amount"
     ],
@@ -200,7 +200,7 @@ export const LogEventsObject = [
   {
     eventType: LogEventTypes.INVITE_DELETE,
     name: "Invite Deleted",
-    description: "Server Log for when a user deletes an invite _(note: there is no log for when an invite expires)_.",
+    description: "Server Log for when a moderator deletes an invite _(note: there is no log for when an invite expires)_.",
     relatedDetails: [
       "User",
       "Invite Code",
